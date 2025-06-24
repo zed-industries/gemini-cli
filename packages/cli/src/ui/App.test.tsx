@@ -14,6 +14,7 @@ import {
   ToolRegistry,
   AccessibilitySettings,
   SandboxConfig,
+  Mode,
 } from '@google/gemini-cli-core';
 import { LoadedSettings, SettingsFile, Settings } from '../config/settings.js';
 import process from 'node:process';
@@ -207,6 +208,7 @@ describe('App UI', () => {
       sessionId: 'test-session-id',
       cwd: '/tmp',
       model: 'model',
+      mode: Mode.TUI,
     }) as unknown as MockServerConfig;
 
     // Ensure the getShowMemoryUsage mock function is specifically set up if not covered by constructor mock

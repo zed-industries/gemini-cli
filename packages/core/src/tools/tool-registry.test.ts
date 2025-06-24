@@ -21,6 +21,7 @@ import {
   ConfigParameters,
   MCPServerConfig,
   ApprovalMode,
+  Mode,
 } from '../config/config.js';
 import { BaseTool, ToolResult } from './tools.js';
 import {
@@ -134,6 +135,7 @@ const baseConfigParams: ConfigParameters = {
   geminiMdFileCount: 0,
   approvalMode: ApprovalMode.DEFAULT,
   sessionId: 'test-session-id',
+  mode: Mode.TUI,
 };
 
 describe('ToolRegistry', () => {

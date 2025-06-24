@@ -47,6 +47,12 @@ export enum ApprovalMode {
   YOLO = 'yolo',
 }
 
+// todo! rename?
+export enum Mode {
+  TUI = 'tui',
+  ACP = 'acp',
+}
+
 export interface AccessibilitySettings {
   disableLoadingPhrases?: boolean;
 }
@@ -126,6 +132,7 @@ export interface ConfigParameters {
   bugCommand?: BugCommandSettings;
   model: string;
   extensionContextFilePaths?: string[];
+  mode: Mode;
 }
 
 export class Config {
@@ -166,6 +173,7 @@ export class Config {
   private readonly extensionContextFilePaths: string[];
   private modelSwitchedDuringSession: boolean = false;
   flashFallbackHandler?: FlashFallbackHandler;
+  private readonly mode: Mode;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
@@ -207,6 +215,7 @@ export class Config {
     this.bugCommand = params.bugCommand;
     this.model = params.model;
     this.extensionContextFilePaths = params.extensionContextFilePaths ?? [];
+    this.mode = params.mode;
 
     if (params.contextFileName) {
       setGeminiMdFilename(params.contextFileName);
@@ -444,6 +453,10 @@ export class Config {
 
   getExtensionContextFilePaths(): string[] {
     return this.extensionContextFilePaths;
+  }
+
+  getMode(): Mode {
+    return this.mode;
   }
 
   async getGitService(): Promise<GitService> {

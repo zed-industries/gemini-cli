@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Config, ConfigParameters, SandboxConfig } from './config.js';
+import { Config, ConfigParameters, Mode, SandboxConfig } from './config.js';
 import * as path from 'path';
 import { setGeminiMdFilename as mockSetGeminiMdFilename } from '../tools/memoryTool.js';
 import {
@@ -79,6 +79,7 @@ describe('Server Config (config.ts)', () => {
   const TELEMETRY_SETTINGS = { enabled: false };
   const EMBEDDING_MODEL = 'gemini-embedding';
   const SESSION_ID = 'test-session-id';
+  const MODE = Mode.TUI;
   const baseParams: ConfigParameters = {
     cwd: '/tmp',
     embeddingModel: EMBEDDING_MODEL,
@@ -91,6 +92,7 @@ describe('Server Config (config.ts)', () => {
     telemetry: TELEMETRY_SETTINGS,
     sessionId: SESSION_ID,
     model: MODEL,
+    mode: MODE,
   };
 
   beforeEach(() => {

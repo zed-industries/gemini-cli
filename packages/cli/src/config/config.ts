@@ -18,6 +18,7 @@ import {
   DEFAULT_GEMINI_EMBEDDING_MODEL,
   FileDiscoveryService,
   TelemetryTarget,
+Mode,
 } from '@google/gemini-cli-core';
 import { Settings } from './settings.js';
 
@@ -53,6 +54,7 @@ interface CliArgs {
   telemetryTarget: string | undefined;
   telemetryOtlpEndpoint: string | undefined;
   telemetryLogPrompts: boolean | undefined;
+  acp: boolean | undefined;
 }
 
 async function parseArguments(): Promise<CliArgs> {
@@ -127,6 +129,11 @@ async function parseArguments(): Promise<CliArgs> {
       type: 'boolean',
       description: 'Enables checkpointing of file edits',
       default: false,
+    })
+    .option('acp', {
+      type: 'boolean',
+      // todo!
+      description: 'Set the mode to ACP',
     })
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
     .alias('v', 'version')
@@ -245,6 +252,7 @@ export async function loadCliConfig(
     bugCommand: settings.bugCommand,
     model: argv.model!,
     extensionContextFilePaths,
+    mode: argv.acp ? Mode.ACP : Mode.TUI
   });
 }
 
