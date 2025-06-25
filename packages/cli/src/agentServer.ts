@@ -163,7 +163,7 @@ class GeminiAgent implements Agent {
               continue;
             }
 
-            this.client.streamMessageChunk?.({
+            this.client.streamMessageChunk({
               threadId: params.threadId,
               chunk: {
                 type: 'text',
@@ -199,19 +199,11 @@ class GeminiAgent implements Agent {
 
           // todo! report properly
           if (toolResponse.error) {
-            this.client.streamMessageChunk?.({
+            this.client.streamMessageChunk({
               threadId: params.threadId,
               chunk: {
                 type: 'text',
                 chunk: `\n\n[DEBUG] ${requestInfo.name} error:\n${toolResponse.error}\n\n`,
-              },
-            });
-          } else {
-            this.client.streamMessageChunk?.({
-              threadId: params.threadId,
-              chunk: {
-                type: 'text',
-                chunk: `\n\n[DEBUG] ${requestInfo.name} output:\n${toolResponse.resultDisplay}\n\n`,
               },
             });
           }
