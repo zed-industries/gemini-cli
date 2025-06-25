@@ -26,7 +26,7 @@ import {
 import { GeminiClient } from '../core/client.js';
 import { DEFAULT_DIFF_OPTIONS } from './diffOptions.js';
 import { ModifiableTool, ModifyContext } from './modifiable-tool.js';
-import { getSpecificMimeType } from '../utils/fileUtils.js';
+import { getSpecificMimeType, ToolEnvironment } from '../utils/fileUtils.js';
 import {
   recordFileOperationMetric,
   FileOperation,
@@ -59,8 +59,7 @@ interface GetCorrectedFileContentResult {
  */
 export class WriteFileTool
   extends BaseTool<WriteFileToolParams, ToolResult>
-  implements ModifiableTool<WriteFileToolParams>
-{
+  implements ModifiableTool<WriteFileToolParams> {
   static readonly Name: string = 'write_file';
   private readonly client: GeminiClient;
 
@@ -207,7 +206,9 @@ export class WriteFileTool
 
   async execute(
     params: WriteFileToolParams,
+    _env: ToolEnvironment,
     abortSignal: AbortSignal,
+    env: ToolEnvironment,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
     if (validationError) {

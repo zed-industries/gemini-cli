@@ -5,6 +5,7 @@
  */
 
 import { FunctionDeclaration, PartListUnion, Schema } from '@google/genai';
+import { ToolEnvironment } from '../utils/fileUtils';
 
 /**
  * Interface representing the base Tool functionality
@@ -77,6 +78,7 @@ export interface Tool<
    */
   execute(
     params: TParams,
+    env: ToolEnvironment,
     signal: AbortSignal,
     updateOutput?: (output: string) => void,
   ): Promise<TResult>;
@@ -88,8 +90,7 @@ export interface Tool<
 export abstract class BaseTool<
   TParams = unknown,
   TResult extends ToolResult = ToolResult,
-> implements Tool<TParams, TResult>
-{
+> implements Tool<TParams, TResult> {
   /**
    * Creates a new instance of BaseTool
    * @param name Internal name of the tool (used for API calls)
@@ -106,7 +107,7 @@ export abstract class BaseTool<
     readonly parameterSchema: Record<string, unknown>,
     readonly isOutputMarkdown: boolean = true,
     readonly canUpdateOutput: boolean = false,
-  ) {}
+  ) { }
 
   /**
    * Function declaration schema computed from name, description, and parameterSchema
@@ -167,6 +168,7 @@ export abstract class BaseTool<
    */
   abstract execute(
     params: TParams,
+    env: ToolEnvironment,
     signal: AbortSignal,
     updateOutput?: (output: string) => void,
   ): Promise<TResult>;

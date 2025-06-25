@@ -8,6 +8,7 @@ import { BaseTool, ToolResult } from './tools.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { homedir } from 'os';
+import { ToolEnvironment } from '../utils/fileUtils.js';
 
 const memoryToolSchemaData = {
   name: 'save_memory',
@@ -180,6 +181,7 @@ export class MemoryTool extends BaseTool<SaveMemoryParams, ToolResult> {
 
   async execute(
     params: SaveMemoryParams,
+    _env: ToolEnvironment,
     _signal: AbortSignal,
   ): Promise<ToolResult> {
     const { fact } = params;

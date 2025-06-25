@@ -15,6 +15,7 @@ import {
   processSingleFileContent,
   DEFAULT_ENCODING,
   getSpecificMimeType,
+  ToolEnvironment,
 } from '../utils/fileUtils.js';
 import { PartListUnion } from '@google/genai';
 import { Config } from '../config/config.js';
@@ -277,6 +278,7 @@ Use this tool when the user's query implies needing the content of several files
 
   async execute(
     params: ReadManyFilesParams,
+    env: ToolEnvironment,
     signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateParams(params);
@@ -332,13 +334,13 @@ Use this tool when the user's query implies needing the content of several files
 
       const filteredEntries = respectGitIgnore
         ? fileDiscovery
-            .filterFiles(
-              entries.map((p) => path.relative(toolBaseDir, p)),
-              {
-                respectGitIgnore,
-              },
-            )
-            .map((p) => path.resolve(toolBaseDir, p))
+          .filterFiles(
+            entries.map((p) => path.relative(toolBaseDir, p)),
+            {
+              respectGitIgnore,
+            },
+          )
+          .map((p) => path.resolve(toolBaseDir, p))
         : entries;
 
       let gitIgnoredCount = 0;
@@ -382,7 +384,7 @@ Use this tool when the user's query implies needing the content of several files
         .relative(toolBaseDir, filePath)
         .replace(/\\/g, '/');
 
-      const fileType = detectFileType(filePath);
+      const fileType = await detectFileType(filePath, env);
 
       if (fileType === 'image' || fileType === 'pdf') {
         const fileExtension = path.extname(filePath).toLowerCase();
@@ -407,6 +409,7 @@ Use this tool when the user's query implies needing the content of several files
       const fileReadResult = await processSingleFileContent(
         filePath,
         toolBaseDir,
+        env,
       );
 
       if (fileReadResult.error) {

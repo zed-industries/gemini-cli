@@ -26,6 +26,7 @@ export interface ShellToolParams {
   directory?: string;
 }
 import { spawn } from 'child_process';
+import { ToolEnvironment } from '../utils/fileUtils.js';
 
 const OUTPUT_UPDATE_INTERVAL_MS = 1000;
 
@@ -148,6 +149,7 @@ export class ShellTool extends BaseTool<ShellToolParams, ToolResult> {
 
   async execute(
     params: ShellToolParams,
+    env: ToolEnvironment,
     abortSignal: AbortSignal,
     updateOutput?: (chunk: string) => void,
   ): Promise<ToolResult> {
@@ -179,24 +181,24 @@ export class ShellTool extends BaseTool<ShellToolParams, ToolResult> {
     const command = isWindows
       ? params.command
       : (() => {
-          // wrap command to append subprocess pids (via pgrep) to temporary file
-          let command = params.command.trim();
-          if (!command.endsWith('&')) command += ';';
-          return `{ ${command} }; __code=$?; pgrep -g 0 >${tempFilePath} 2>&1; exit $__code;`;
-        })();
+        // wrap command to append subprocess pids (via pgrep) to temporary file
+        let command = params.command.trim();
+        if (!command.endsWith('&')) command += ';';
+        return `{ ${command} }; __code=$?; pgrep -g 0 >${tempFilePath} 2>&1; exit $__code;`;
+      })();
 
     // spawn command in specified directory (or project root if not specified)
     const shell = isWindows
       ? spawn('cmd.exe', ['/c', command], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          // detached: true, // ensure subprocess starts its own process group (esp. in Linux)
-          cwd: path.resolve(this.config.getTargetDir(), params.directory || ''),
-        })
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // detached: true, // ensure subprocess starts its own process group (esp. in Linux)
+        cwd: path.resolve(this.config.getTargetDir(), params.directory || ''),
+      })
       : spawn('bash', ['-c', command], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          detached: true, // ensure subprocess starts its own process group (esp. in Linux)
-          cwd: path.resolve(this.config.getTargetDir(), params.directory || ''),
-        });
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true, // ensure subprocess starts its own process group (esp. in Linux)
+        cwd: path.resolve(this.config.getTargetDir(), params.directory || ''),
+      });
 
     let exited = false;
     let stdout = '';
