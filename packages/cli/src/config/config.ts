@@ -251,8 +251,14 @@ export async function loadCliConfig(
     fileDiscoveryService: fileService,
     bugCommand: settings.bugCommand,
     model: argv.model!,
+<<<<<<< HEAD
     extensionContextFilePaths,
     mode: argv.acp ? Mode.ACP : Mode.TUI
+||||||| parent of f10e032e (Return a valid dummy date from listThreads)
+    mode: argv.acp ? Mode.ACP : Mode.TUI
+=======
+    mode: argv.acp ? Mode.ACP : Mode.TUI,
+>>>>>>> f10e032e (Return a valid dummy date from listThreads)
   });
 }
 
