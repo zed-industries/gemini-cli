@@ -4,7 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AuthType, Config, executeToolCall, GeminiChat, ToolCallRequestInfo, ToolRegistry } from '@gemini-cli/core';
+import {
+  AuthType,
+  Config,
+  executeToolCall,
+  GeminiChat,
+  ToolCallRequestInfo,
+  ToolRegistry,
+  unreachable,
+} from '@google/gemini-cli-core';
 import {
   Agent,
   Client,
@@ -23,12 +31,7 @@ import {
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
-import {
-  Content,
-  Part,
-  FunctionCall,
-} from '@google/genai';
-import { unreachable } from "@gemini-cli/core";
+import { Content, Part, FunctionCall } from '@google/genai';
 
 export async function runAgentServer(config: Config) {
   // todo!("make authentication part of the protocol")
@@ -49,7 +52,7 @@ class GeminiAgent implements Agent {
   constructor(
     private config: Config,
     private client: Client,
-  ) { }
+  ) {}
 
   async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
     return {
@@ -102,9 +105,7 @@ class GeminiAgent implements Agent {
     return { entries };
   }
 
-  async sendMessage(
-    params: SendMessageParams,
-  ): Promise<SendMessageResponse> {
+  async sendMessage(params: SendMessageParams): Promise<SendMessageResponse> {
     const chat = this.threads.get(params.thread_id);
     if (!chat) {
       throw new Error(`Thread not found: ${params.thread_id}`);
@@ -114,10 +115,10 @@ class GeminiAgent implements Agent {
 
     const parts = params.message.chunks.map((chunk) => {
       switch (chunk.type) {
-        case "text":
+        case 'text':
           return {
             text: chunk.chunk,
-          }
+          };
         default:
           return unreachable(chunk.type);
       }
@@ -150,17 +151,17 @@ class GeminiAgent implements Agent {
           for (const part of candidate.content?.parts ?? []) {
             if (part.thought || !part.text) {
               // todo!
-              continue
+              continue;
             }
 
             this.client.streamMessageChunk?.({
               thread_id: params.thread_id,
               turn_id: params.turn_id,
               chunk: {
-                type: "text",
-                chunk: part.text
-              }
-            })
+                type: 'text',
+                chunk: part.text,
+              },
+            });
           }
         }
 
@@ -193,19 +194,19 @@ class GeminiAgent implements Agent {
               thread_id: params.thread_id,
               turn_id: params.turn_id,
               chunk: {
-                type: "text",
-                chunk: `\n\n[DEBUG] ${requestInfo.name} error:\n${toolResponse.error}\n\n`
-              }
-            })
+                type: 'text',
+                chunk: `\n\n[DEBUG] ${requestInfo.name} error:\n${toolResponse.error}\n\n`,
+              },
+            });
           } else {
             this.client.streamMessageChunk?.({
               thread_id: params.thread_id,
               turn_id: params.turn_id,
               chunk: {
-                type: "text",
-                chunk: `\n\n[DEBUG] ${requestInfo.name} output:\n${toolResponse.resultDisplay}\n\n`
-              }
-            })
+                type: 'text',
+                chunk: `\n\n[DEBUG] ${requestInfo.name} output:\n${toolResponse.resultDisplay}\n\n`,
+              },
+            });
           }
 
           if (toolResponse.responseParts) {
