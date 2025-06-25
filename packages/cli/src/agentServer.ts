@@ -39,7 +39,7 @@ export async function runAgentServer(config: Config) {
 
   const stdout = Writable.toWeb(process.stdout);
   const stdin = Readable.toWeb(process.stdin) as ReadableStream;
-  = Connection.agentToClient(
+  Connection.agentToClient(
     (client: Client) => new GeminiAgent(config, client),
     stdout,
     stdin,

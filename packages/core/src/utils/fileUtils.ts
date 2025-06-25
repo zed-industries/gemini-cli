@@ -9,6 +9,7 @@ import path from 'path';
 import { PartUnion } from '@google/genai';
 import mime from 'mime-types';
 import { Client, ThreadId } from 'agentic-coding-protocol';
+import { Buffer } from 'buffer';
 
 // Constants for text file processing
 const DEFAULT_MAX_LINES_TEXT_FILE = 2000;
