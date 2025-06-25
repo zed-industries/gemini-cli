@@ -4,36 +4,93 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Writable, Readable } from 'node:stream';
+import { AuthType, Config, GeminiChat } from '@gemini-cli/core';
 import {
   Agent,
   Client,
   Connection,
-  ListThreadsParams,
-  ListThreadsResponse,
+  CreateThreadParams,
+  CreateThreadResponse,
+  GetThreadsParams,
+  GetThreadsResponse,
+  GetThreadEntriesParams,
+  GetThreadEntriesResponse,
   OpenThreadParams,
   OpenThreadResponse,
+  ThreadEntry,
 } from 'agentic-coding-protocol';
+import { Readable, Writable } from 'node:stream';
+import { randomUUID } from 'node:crypto';
 
-export function runAgentServer() {
+export async function runAgentServer(config: Config) {
+  // todo!("make authentication part of the protocol")
+  await config.refreshAuth(AuthType.USE_GEMINI);
+
   const stdout = Writable.toWeb(process.stdout);
   const stdin = Readable.toWeb(process.stdin) as ReadableStream;
-  Connection.agentToClient(GeminiAgent, stdout, stdin);
+  Connection.agentToClient(
+    (client) => new GeminiAgent(config, client),
+    stdout,
+    stdin,
+  );
 }
 
 class GeminiAgent implements Agent {
-  constructor(private client: Client) {}
+  threads: Map<string, GeminiChat> = new Map();
 
-  async listThreads(params: ListThreadsParams): Promise<ListThreadsResponse> {
-    const threads = [
-      { id: '1', title: 'Bar', created_at: '2025-01-01T00:00:00Z' },
-    ];
+  constructor(
+    private config: Config,
+    private client: Client,
+  ) {}
 
+  async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
     return {
-      threads,
+      threads: Array.from(this.threads.entries()).map(([id, _chat]) => ({
+        id,
+        title: 'todo!()',
+        modified_at: new Date().toISOString(), // todo!()
+      })),
     };
   }
-  openThread(params: OpenThreadParams): Promise<OpenThreadResponse> {
+  async openThread(_params: OpenThreadParams): Promise<OpenThreadResponse> {
     throw new Error('Method not implemented.');
+  }
+  async createThread(
+    _params: CreateThreadParams,
+  ): Promise<CreateThreadResponse> {
+    const geminiClient = this.config.getGeminiClient();
+    const chat = await geminiClient.startChat();
+    const thread_id = randomUUID();
+
+    this.threads.set(thread_id, chat);
+
+    // todo!("Save thread so that it can be resumed later.");
+    // const logger = new Logger(this.config.getSessionId());
+    // await logger.initialize();
+    // const history = chat.getHistory();
+    // await logger.saveCheckpoint(history, thread_id);
+
+    return { thread_id };
+  }
+  async getThreadEntries(
+    params: GetThreadEntriesParams,
+  ): Promise<GetThreadEntriesResponse> {
+    const thread = this.threads.get(params.thread_id);
+    if (!thread) {
+      throw new Error(`Thread not found: ${params.thread_id}`);
+    }
+    const entries = thread.getHistory().map<ThreadEntry>((content) => ({
+      type: 'message',
+      role: content.role === 'user' ? 'user' : 'assistant',
+      chunks:
+        content.parts
+          // todo! Map the other types of content
+          ?.filter((part) => !!part.text)
+          .map((part) => ({
+            type: 'text',
+            chunk: part.text || '',
+          })) || [],
+    }));
+    return { entries };
   }
 }

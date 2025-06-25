@@ -33,7 +33,7 @@ import {
   sessionId,
   logUserPrompt,
   AuthType,
-Mode,
+  Mode,
 } from '@google/gemini-cli-core';
 import { validateAuthMethod } from './config/auth.js';
 import { setMaxSizedBoxDebugging } from './ui/components/shared/MaxSizedBox.js';
@@ -161,9 +161,11 @@ export async function main() {
       }
     }
   }
-if (config.getMode() === Mode.ACP) {
-  return runAgentServer();
-}
+
+  if (config.getMode() === Mode.ACP) {
+    return runAgentServer(config);
+  }
+
   let input = config.getQuestion();
   const startupWarnings = await getStartupWarnings();
 
