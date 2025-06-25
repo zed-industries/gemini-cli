@@ -35,18 +35,12 @@ import {
   TelemetryTarget,
   StartSessionEvent,
 } from '../telemetry/index.js';
-<<<<<<< HEAD
 import {
   DEFAULT_GEMINI_EMBEDDING_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
 } from './models.js';
 import { ClearcutLogger } from '../telemetry/clearcut-logger/clearcut-logger.js';
-||||||| parent of 115817e3 (TEMP)
-import { DEFAULT_GEMINI_EMBEDDING_MODEL } from './models.js';
-=======
-import { DEFAULT_GEMINI_EMBEDDING_MODEL } from './models.js';
 import { ToolEnvironment, LocalToolEnvironment } from '../utils/fileUtils.js';
->>>>>>> 115817e3 (TEMP)
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -138,14 +132,8 @@ export interface ConfigParameters {
   fileDiscoveryService?: FileDiscoveryService;
   bugCommand?: BugCommandSettings;
   model: string;
-<<<<<<< HEAD
   extensionContextFilePaths?: string[];
-  mode: Mode;
-||||||| parent of 115817e3 (TEMP)
-  mode: Mode,
-=======
-  mode: Mode;
->>>>>>> 115817e3 (TEMP)
+  mode?: Mode;
 }
 
 export class Config {
@@ -215,12 +203,8 @@ export class Config {
       otlpEndpoint: params.telemetry?.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT,
       logPrompts: params.telemetry?.logPrompts ?? true,
     };
-<<<<<<< HEAD
     this.usageStatisticsEnabled = params.usageStatisticsEnabled ?? true;
-||||||| parent of 115817e3 (TEMP)
-=======
     this.toolEnvironment = new LocalToolEnvironment();
->>>>>>> 115817e3 (TEMP)
 
     this.fileFiltering = {
       respectGitIgnore: params.fileFiltering?.respectGitIgnore ?? true,
@@ -234,7 +218,7 @@ export class Config {
     this.bugCommand = params.bugCommand;
     this.model = params.model;
     this.extensionContextFilePaths = params.extensionContextFilePaths ?? [];
-    this.mode = params.mode;
+    this.mode = params.mode ?? Mode.TUI;
 
     if (params.contextFileName) {
       setGeminiMdFilename(params.contextFileName);

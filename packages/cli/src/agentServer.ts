@@ -12,6 +12,7 @@ import {
   ToolCallRequestInfo,
   ToolRegistry,
   unreachable,
+  AcpToolEnvironment,
 } from '@google/gemini-cli-core';
 import {
   Agent,
@@ -35,7 +36,8 @@ import { Content, Part, FunctionCall } from '@google/genai';
 
 export async function runAgentServer(config: Config) {
   // todo!("make authentication part of the protocol")
-  await config.refreshAuth(AuthType.USE_GEMINI);
+  // await config.refreshAuth(AuthType.USE_GEMINI);
+  await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE_PERSONAL);
 
   const stdout = Writable.toWeb(process.stdout);
   const stdin = Readable.toWeb(process.stdin) as ReadableStream;
@@ -183,6 +185,7 @@ class GeminiAgent implements Agent {
           const callId = fc.id ?? `${fc.name}-${Date.now()}`;
           const requestInfo: ToolCallRequestInfo = {
             callId,
+            isClientInitiated: true, // todo!()
             name: fc.name as string,
             args: (fc.args ?? {}) as Record<string, unknown>,
           };

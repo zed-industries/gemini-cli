@@ -36,7 +36,6 @@ describe('telemetry', () => {
       'http://localhost:4317',
     );
     vi.spyOn(mockConfig, 'getSessionId').mockReturnValue('test-session-id');
-    vi.spyOn(loggers, 'logCliConfiguration').mockImplementation(() => { });
 
     mockNodeSdk = {
       start: vi.fn(),

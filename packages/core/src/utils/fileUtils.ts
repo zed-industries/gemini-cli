@@ -63,16 +63,13 @@ interface ReadFileOptions {
   limit?: number;
 }
 
-export abstract class ToolEnvironment {
-  abstract stat(path: string): Promise<FileStat>;
-  abstract readTextFile(path: string): Promise<string>;
-  abstract readBinaryFile(
-    path: string,
-    options?: ReadFileOptions,
-  ): Promise<Uint8Array>;
+export interface ToolEnvironment {
+  stat(path: string): Promise<FileStat>;
+  readTextFile(path: string): Promise<string>;
+  readBinaryFile(path: string, options?: ReadFileOptions): Promise<Uint8Array>;
 }
 
-export class LocalToolEnvironment extends ToolEnvironment {
+export class LocalToolEnvironment implements ToolEnvironment {
   async stat(path: string): Promise<FileStat> {
     if (!fs.existsSync(path)) {
       return { exists: false, isDirectory: false };
@@ -100,13 +97,11 @@ export class LocalToolEnvironment extends ToolEnvironment {
   }
 }
 
-export class AcpToolEnvironment extends ToolEnvironment {
+export class AcpToolEnvironment implements ToolEnvironment {
   constructor(
     private client: Client,
     private threadId: ThreadId,
-  ) {
-    super();
-  }
+  ) {}
 
   stat(path: string): Promise<FileStat> {
     return this.client.stat({ path, threadId: this.threadId });
