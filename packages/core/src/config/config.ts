@@ -35,11 +35,18 @@ import {
   TelemetryTarget,
   StartSessionEvent,
 } from '../telemetry/index.js';
+<<<<<<< HEAD
 import {
   DEFAULT_GEMINI_EMBEDDING_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
 } from './models.js';
 import { ClearcutLogger } from '../telemetry/clearcut-logger/clearcut-logger.js';
+||||||| parent of 115817e3 (TEMP)
+import { DEFAULT_GEMINI_EMBEDDING_MODEL } from './models.js';
+=======
+import { DEFAULT_GEMINI_EMBEDDING_MODEL } from './models.js';
+import { ToolEnvironment, LocalToolEnvironment } from '../utils/fileUtils.js';
+>>>>>>> 115817e3 (TEMP)
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -131,8 +138,14 @@ export interface ConfigParameters {
   fileDiscoveryService?: FileDiscoveryService;
   bugCommand?: BugCommandSettings;
   model: string;
+<<<<<<< HEAD
   extensionContextFilePaths?: string[];
   mode: Mode;
+||||||| parent of 115817e3 (TEMP)
+  mode: Mode,
+=======
+  mode: Mode;
+>>>>>>> 115817e3 (TEMP)
 }
 
 export class Config {
@@ -174,6 +187,7 @@ export class Config {
   private modelSwitchedDuringSession: boolean = false;
   flashFallbackHandler?: FlashFallbackHandler;
   private readonly mode: Mode;
+  private toolEnvironment: ToolEnvironment;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
@@ -201,7 +215,12 @@ export class Config {
       otlpEndpoint: params.telemetry?.otlpEndpoint ?? DEFAULT_OTLP_ENDPOINT,
       logPrompts: params.telemetry?.logPrompts ?? true,
     };
+<<<<<<< HEAD
     this.usageStatisticsEnabled = params.usageStatisticsEnabled ?? true;
+||||||| parent of 115817e3 (TEMP)
+=======
+    this.toolEnvironment = new LocalToolEnvironment();
+>>>>>>> 115817e3 (TEMP)
 
     this.fileFiltering = {
       respectGitIgnore: params.fileFiltering?.respectGitIgnore ?? true,
@@ -344,6 +363,10 @@ export class Config {
     return this.toolDiscoveryCommand;
   }
 
+  getToolEnvironment(): ToolEnvironment {
+    return this.toolEnvironment;
+  }
+
   getToolCallCommand(): string | undefined {
     return this.toolCallCommand;
   }
@@ -465,6 +488,10 @@ export class Config {
       await this.gitService.initialize();
     }
     return this.gitService;
+  }
+
+  setToolEnvironment(toolEnvironment: ToolEnvironment): void {
+    this.toolEnvironment = toolEnvironment;
   }
 }
 

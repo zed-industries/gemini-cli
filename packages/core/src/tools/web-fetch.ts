@@ -218,7 +218,7 @@ ${textContent}
 
   async execute(
     params: WebFetchToolParams,
-    _env: ToolEnvironment,
+
     signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateParams(params);

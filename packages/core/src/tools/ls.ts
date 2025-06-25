@@ -10,7 +10,6 @@ import { BaseTool, ToolResult } from './tools.js';
 import { SchemaValidator } from '../utils/schemaValidator.js';
 import { makeRelative, shortenPath } from '../utils/paths.js';
 import { Config } from '../config/config.js';
-import { ToolEnvironment } from '../utils/fileUtils.js';
 
 /**
  * Parameters for the LS tool
@@ -201,7 +200,7 @@ export class LSTool extends BaseTool<LSToolParams, ToolResult> {
    */
   async execute(
     params: LSToolParams,
-    _env: ToolEnvironment,
+
     _signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);

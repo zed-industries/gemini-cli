@@ -11,7 +11,6 @@ import { SchemaValidator } from '../utils/schemaValidator.js';
 import { BaseTool, ToolResult } from './tools.js';
 import { shortenPath, makeRelative } from '../utils/paths.js';
 import { Config } from '../config/config.js';
-import { ToolEnvironment } from '../utils/fileUtils.js';
 
 // Subset of 'Path' interface provided by 'glob' that we can implement for testing
 export interface GlobPath {
@@ -202,7 +201,6 @@ export class GlobTool extends BaseTool<GlobToolParams, ToolResult> {
    */
   async execute(
     params: GlobToolParams,
-    _env: ToolEnvironment,
     signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);

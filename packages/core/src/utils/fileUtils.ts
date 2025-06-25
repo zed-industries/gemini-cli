@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { PartUnion } from '@google/genai';
 import mime from 'mime-types';
-import { Client } from 'agentic-coding-protocol';
+import { Client, ThreadId } from 'agentic-coding-protocol';
 
 // Constants for text file processing
 const DEFAULT_MAX_LINES_TEXT_FILE = 2000;
@@ -44,7 +44,7 @@ export function isWithinRoot(
   // unless it's the root path itself (e.g., '/' or 'C:\').
   const rootWithSeparator =
     normalizedRootDirectory === path.sep ||
-      normalizedRootDirectory.endsWith(path.sep)
+    normalizedRootDirectory.endsWith(path.sep)
       ? normalizedRootDirectory
       : normalizedRootDirectory + path.sep;
 
@@ -59,29 +59,35 @@ interface FileStat {
   isDirectory: boolean;
 }
 interface ReadFileOptions {
-  limit?: number
+  limit?: number;
 }
 
 export abstract class ToolEnvironment {
   abstract stat(path: string): Promise<FileStat>;
   abstract readTextFile(path: string): Promise<string>;
-  abstract readBinaryFile(path: string, options?: ReadFileOptions): Promise<Uint8Array>;
+  abstract readBinaryFile(
+    path: string,
+    options?: ReadFileOptions,
+  ): Promise<Uint8Array>;
 }
 
 export class LocalToolEnvironment extends ToolEnvironment {
   async stat(path: string): Promise<FileStat> {
     if (!fs.existsSync(path)) {
-      return { exists: false, isDirectory: false }
+      return { exists: false, isDirectory: false };
     }
 
-    return { exists: true, isDirectory: fs.statSync(path).isDirectory() }
+    return { exists: true, isDirectory: fs.statSync(path).isDirectory() };
   }
 
   async readTextFile(path: string): Promise<string> {
-    return await fs.promises.readFile(path, "utf8")
+    return await fs.promises.readFile(path, 'utf8');
   }
 
-  async readBinaryFile(path: string, options: ReadFileOptions): Promise<Uint8Array> {
+  async readBinaryFile(
+    path: string,
+    options: ReadFileOptions,
+  ): Promise<Uint8Array> {
     if (options.limit !== undefined) {
       const buffer = Buffer.alloc(options.limit);
       const fd = fs.openSync(path, 'r');
@@ -89,35 +95,39 @@ export class LocalToolEnvironment extends ToolEnvironment {
       fs.closeSync(fd);
       return buffer.subarray(0, bytesRead);
     }
-    return await fs.promises.readFile(path)
+    return await fs.promises.readFile(path);
   }
 }
 
-export class ACPToolEnvironment extends ToolEnvironment {
-  constructor(private client: Client, private thread_id: ThreadId) {
+export class AcpToolEnvironment extends ToolEnvironment {
+  constructor(
+    private client: Client,
+    private threadId: ThreadId,
+  ) {
+    super();
   }
 
-  async stat(path: string): Promise<FileStat> {
-    if (!fs.existsSync(path)) {
-      return { exists: false, isDirectory: false }
-    }
-
-    return { exists: true, isDirectory: fs.statSync(path).isDirectory() }
+  stat(path: string): Promise<FileStat> {
+    return this.client.stat({ path, threadId: this.threadId });
   }
 
   async readTextFile(path: string): Promise<string> {
-    return await fs.promises.readFile(path, "utf8")
+    const file = await this.client.readTextFile({
+      path,
+      threadId: this.threadId,
+    });
+    return file.content;
   }
 
-  async readBinaryFile(path: string, options: ReadFileOptions): Promise<Uint8Array> {
-    if (options.limit !== undefined) {
-      const buffer = Buffer.alloc(options.limit);
-      const fd = fs.openSync(path, 'r');
-      const bytesRead = fs.readSync(fd, buffer, 0, options.limit, 0);
-      fs.closeSync(fd);
-      return buffer.subarray(0, bytesRead);
-    }
-    return await fs.promises.readFile(path)
+  async readBinaryFile(
+    path: string,
+    _options: ReadFileOptions,
+  ): Promise<Uint8Array> {
+    const file = await this.client.readBinaryFile({
+      path,
+      threadId: this.threadId,
+    });
+    return Buffer.from(file.content, 'base64');
   }
 }
 
@@ -126,9 +136,12 @@ export class ACPToolEnvironment extends ToolEnvironment {
  * @param filePath Path to the file.
  * @returns True if the file appears to be binary.
  */
-export async function isBinaryFile(filePath: string, env: ToolEnvironment): Promise<boolean> {
+export async function isBinaryFile(
+  filePath: string,
+  env: ToolEnvironment,
+): Promise<boolean> {
   try {
-    const buffer = await env.readBinaryFile(filePath, { limit: 4096 })
+    const buffer = await env.readBinaryFile(filePath, { limit: 4096 });
 
     // Empty file is not considered binary for content checking
     if (buffer.length === 0) return false;
@@ -156,7 +169,7 @@ export async function isBinaryFile(filePath: string, env: ToolEnvironment): Prom
  */
 export async function detectFileType(
   filePath: string,
-  env: ToolEnvironment
+  env: ToolEnvironment,
 ): Promise<'text' | 'image' | 'pdf' | 'binary'> {
   const ext = path.extname(filePath).toLowerCase();
   const lookedUpMimeType = mime.lookup(filePath); // Returns false if not found, or the mime type string

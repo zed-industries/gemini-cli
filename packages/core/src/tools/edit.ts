@@ -24,7 +24,6 @@ import { ensureCorrectEdit } from '../utils/editCorrector.js';
 import { DEFAULT_DIFF_OPTIONS } from './diffOptions.js';
 import { ReadFileTool } from './read-file.js';
 import { ModifiableTool, ModifyContext } from './modifiable-tool.js';
-import { ToolEnvironment } from '../utils/fileUtils.js';
 
 /**
  * Parameters for the Edit tool
@@ -65,7 +64,8 @@ interface CalculatedEdit {
  */
 export class EditTool
   extends BaseTool<EditToolParams, ToolResult>
-  implements ModifiableTool<EditToolParams> {
+  implements ModifiableTool<EditToolParams>
+{
   static readonly Name = 'replace';
   private readonly config: Config;
   private readonly rootDirectory: string;
@@ -364,7 +364,6 @@ Expectation for required parameters:
    */
   async execute(
     params: EditToolParams,
-    _env: ToolEnvironment,
     signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);

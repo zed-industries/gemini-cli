@@ -39,8 +39,8 @@ export async function runAgentServer(config: Config) {
 
   const stdout = Writable.toWeb(process.stdout);
   const stdin = Readable.toWeb(process.stdin) as ReadableStream;
-  Connection.agentToClient(
-    (client) => new GeminiAgent(config, client),
+  = Connection.agentToClient(
+    (client: Client) => new GeminiAgent(config, client),
     stdout,
     stdin,
   );
@@ -59,21 +59,23 @@ class GeminiAgent implements Agent {
       threads: Array.from(this.threads.entries()).map(([id, _chat]) => ({
         id,
         title: 'todo!()',
-        modified_at: new Date().toISOString(), // todo!()
+        modifiedAt: new Date().toISOString(), // todo!()
       })),
     };
   }
+
   async openThread(_params: OpenThreadParams): Promise<OpenThreadResponse> {
     throw new Error('Method not implemented.');
   }
+
   async createThread(
     _params: CreateThreadParams,
   ): Promise<CreateThreadResponse> {
     const geminiClient = this.config.getGeminiClient();
     const chat = await geminiClient.startChat();
-    const thread_id = randomUUID();
+    const threadId = randomUUID();
 
-    this.threads.set(thread_id, chat);
+    this.threads.set(threadId, chat);
 
     // todo!("Save thread so that it can be resumed later.");
     // const logger = new Logger(this.config.getSessionId());
@@ -81,14 +83,14 @@ class GeminiAgent implements Agent {
     // const history = chat.getHistory();
     // await logger.saveCheckpoint(history, thread_id);
 
-    return { thread_id };
+    return { threadId };
   }
   async getThreadEntries(
     params: GetThreadEntriesParams,
   ): Promise<GetThreadEntriesResponse> {
-    const thread = this.threads.get(params.thread_id);
+    const thread = this.threads.get(params.threadId);
     if (!thread) {
-      throw new Error(`Thread not found: ${params.thread_id}`);
+      throw new Error(`Thread not found: ${params.threadId}`);
     }
     const entries = thread.getHistory().map<ThreadEntry>((content) => ({
       type: 'message',
@@ -106,10 +108,15 @@ class GeminiAgent implements Agent {
   }
 
   async sendMessage(params: SendMessageParams): Promise<SendMessageResponse> {
-    const chat = this.threads.get(params.thread_id);
+    const chat = this.threads.get(params.threadId);
     if (!chat) {
-      throw new Error(`Thread not found: ${params.thread_id}`);
+      throw new Error(`Thread not found: ${params.threadId}`);
     }
+    // todo!  the CLI only seems to support one thread at a time.
+    // should we remove the thread id param from all events and set the active one via a method?
+    this.config.setToolEnvironment(
+      new AcpToolEnvironment(this.client, params.threadId),
+    );
 
     const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
 
@@ -155,8 +162,7 @@ class GeminiAgent implements Agent {
             }
 
             this.client.streamMessageChunk?.({
-              thread_id: params.thread_id,
-              turn_id: params.turn_id,
+              threadId: params.threadId,
               chunk: {
                 type: 'text',
                 chunk: part.text,
@@ -191,8 +197,7 @@ class GeminiAgent implements Agent {
           // todo! report properly
           if (toolResponse.error) {
             this.client.streamMessageChunk?.({
-              thread_id: params.thread_id,
-              turn_id: params.turn_id,
+              threadId: params.threadId,
               chunk: {
                 type: 'text',
                 chunk: `\n\n[DEBUG] ${requestInfo.name} error:\n${toolResponse.error}\n\n`,
@@ -200,8 +205,7 @@ class GeminiAgent implements Agent {
             });
           } else {
             this.client.streamMessageChunk?.({
-              thread_id: params.thread_id,
-              turn_id: params.turn_id,
+              threadId: params.threadId,
               chunk: {
                 type: 'text',
                 chunk: `\n\n[DEBUG] ${requestInfo.name} output:\n${toolResponse.resultDisplay}\n\n`,

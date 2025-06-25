@@ -8,7 +8,11 @@ import path from 'path';
 import { SchemaValidator } from '../utils/schemaValidator.js';
 import { makeRelative, shortenPath } from '../utils/paths.js';
 import { BaseTool, ToolResult } from './tools.js';
-import { isWithinRoot, processSingleFileContent, ToolEnvironment } from '../utils/fileUtils.js';
+import {
+  isWithinRoot,
+  processSingleFileContent,
+  ToolEnvironment,
+} from '../utils/fileUtils.js';
 import { Config } from '../config/config.js';
 import { getSpecificMimeType } from '../utils/fileUtils.js';
 import {
@@ -126,9 +130,8 @@ export class ReadFileTool extends BaseTool<ReadFileToolParams, ToolResult> {
 
   async execute(
     params: ReadFileToolParams,
-    _env: ToolEnvironment,
+
     _signal: AbortSignal,
-    env: ToolEnvironment,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
     if (validationError) {
@@ -141,7 +144,7 @@ export class ReadFileTool extends BaseTool<ReadFileToolParams, ToolResult> {
     const result = await processSingleFileContent(
       params.absolute_path,
       this.rootDirectory,
-      env,
+      this.config.getToolEnvironment(),
       params.offset,
       params.limit,
     );

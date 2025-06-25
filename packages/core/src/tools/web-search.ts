@@ -51,8 +51,8 @@ export interface WebSearchToolParams {
  */
 export interface WebSearchToolResult extends ToolResult {
   sources?: GroundingMetadata extends { groundingChunks: GroundingChunkItem[] }
-  ? GroundingMetadata['groundingChunks']
-  : GroundingChunkItem[];
+    ? GroundingMetadata['groundingChunks']
+    : GroundingChunkItem[];
 }
 
 /**
@@ -104,7 +104,7 @@ export class WebSearchTool extends BaseTool<
 
   async execute(
     params: WebSearchToolParams,
-    _env: ToolEnvironment,
+
     signal: AbortSignal,
   ): Promise<WebSearchToolResult> {
     const validationError = this.validateParams(params);

@@ -15,7 +15,6 @@ import { SchemaValidator } from '../utils/schemaValidator.js';
 import { makeRelative, shortenPath } from '../utils/paths.js';
 import { getErrorMessage, isNodeError } from '../utils/errors.js';
 import { isGitRepository } from '../utils/gitUtils.js';
-import { ToolEnvironment } from '../utils/fileUtils.js';
 
 // --- Interfaces ---
 
@@ -170,7 +169,7 @@ export class GrepTool extends BaseTool<GrepToolParams, ToolResult> {
    */
   async execute(
     params: GrepToolParams,
-    _env: ToolEnvironment,
+
     signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
