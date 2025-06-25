@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AuthType, Config, GeminiChat } from '@gemini-cli/core';
+import { AuthType, Config, executeToolCall, GeminiChat, ToolCallRequestInfo, ToolRegistry } from '@gemini-cli/core';
 import {
   Agent,
   Client,
@@ -18,9 +18,17 @@ import {
   OpenThreadParams,
   OpenThreadResponse,
   ThreadEntry,
+  SendMessageParams,
+  SendMessageResponse,
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
+import {
+  Content,
+  Part,
+  FunctionCall,
+} from '@google/genai';
+import { unreachable } from "@gemini-cli/core";
 
 export async function runAgentServer(config: Config) {
   // todo!("make authentication part of the protocol")
@@ -41,7 +49,7 @@ class GeminiAgent implements Agent {
   constructor(
     private config: Config,
     private client: Client,
-  ) {}
+  ) { }
 
   async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
     return {
@@ -92,5 +100,132 @@ class GeminiAgent implements Agent {
           })) || [],
     }));
     return { entries };
+  }
+
+  async sendMessage(
+    params: SendMessageParams,
+  ): Promise<SendMessageResponse> {
+    const chat = this.threads.get(params.thread_id);
+    if (!chat) {
+      throw new Error(`Thread not found: ${params.thread_id}`);
+    }
+
+    const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
+
+    const parts = params.message.chunks.map((chunk) => {
+      switch (chunk.type) {
+        case "text":
+          return {
+            text: chunk.chunk,
+          }
+        default:
+          return unreachable(chunk.type);
+      }
+    });
+
+    const abortController = new AbortController();
+    let nextMessage: Content | null = { role: 'user', parts };
+
+    while (nextMessage !== null) {
+      const functionCalls: FunctionCall[] = [];
+
+      const responseStream = await chat.sendMessageStream({
+        message: nextMessage?.parts ?? [],
+        config: {
+          abortSignal: abortController.signal,
+          tools: [
+            { functionDeclarations: toolRegistry.getFunctionDeclarations() },
+          ],
+        },
+      });
+      nextMessage = null;
+
+      for await (const resp of responseStream) {
+        if (abortController.signal.aborted) {
+          throw new Error('Aborted');
+        }
+
+        if (resp.candidates && resp.candidates.length > 0) {
+          const candidate = resp.candidates[0];
+          for (const part of candidate.content?.parts ?? []) {
+            if (part.thought || !part.text) {
+              // todo!
+              continue
+            }
+
+            this.client.streamMessageChunk?.({
+              thread_id: params.thread_id,
+              turn_id: params.turn_id,
+              chunk: {
+                type: "text",
+                chunk: part.text
+              }
+            })
+          }
+        }
+
+        if (resp.functionCalls) {
+          functionCalls.push(...resp.functionCalls);
+        }
+      }
+
+      if (functionCalls.length > 0) {
+        const toolResponseParts: Part[] = [];
+
+        for (const fc of functionCalls) {
+          const callId = fc.id ?? `${fc.name}-${Date.now()}`;
+          const requestInfo: ToolCallRequestInfo = {
+            callId,
+            name: fc.name as string,
+            args: (fc.args ?? {}) as Record<string, unknown>,
+          };
+
+          const toolResponse = await executeToolCall(
+            this.config,
+            requestInfo,
+            toolRegistry,
+            abortController.signal,
+          );
+
+          // todo! report properly
+          if (toolResponse.error) {
+            this.client.streamMessageChunk?.({
+              thread_id: params.thread_id,
+              turn_id: params.turn_id,
+              chunk: {
+                type: "text",
+                chunk: `\n\n[DEBUG] ${requestInfo.name} error:\n${toolResponse.error}\n\n`
+              }
+            })
+          } else {
+            this.client.streamMessageChunk?.({
+              thread_id: params.thread_id,
+              turn_id: params.turn_id,
+              chunk: {
+                type: "text",
+                chunk: `\n\n[DEBUG] ${requestInfo.name} output:\n${toolResponse.resultDisplay}\n\n`
+              }
+            })
+          }
+
+          if (toolResponse.responseParts) {
+            const parts = Array.isArray(toolResponse.responseParts)
+              ? toolResponse.responseParts
+              : [toolResponse.responseParts];
+            for (const part of parts) {
+              if (typeof part === 'string') {
+                toolResponseParts.push({ text: part });
+              } else if (part) {
+                toolResponseParts.push(part);
+              }
+            }
+          }
+
+          nextMessage = { role: 'user', parts: toolResponseParts };
+        }
+      }
+    }
+
+    return null;
   }
 }
