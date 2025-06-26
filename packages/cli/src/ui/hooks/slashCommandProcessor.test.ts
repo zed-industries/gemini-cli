@@ -71,15 +71,6 @@ import {
 } from '@google/gemini-cli-core';
 import { useSessionStats } from '../contexts/SessionContext.js';
 import { LoadedSettings } from '../../config/settings.js';
-
-vi.mock('@gemini-code/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@gemini-code/core')>();
-  return {
-    ...actual,
-    GitService: vi.fn(),
-  };
-});
-
 import * as ShowMemoryCommandModule from './useShowMemoryCommand.js';
 import { GIT_COMMIT_INFO } from '../../generated/git-commit.js';
 
@@ -417,14 +408,7 @@ describe('useSlashCommandProcessor', () => {
       // Use the mocked memoryUsage value
       const memoryUsage = '11.8 MB';
 
-      const diagnosticInfo = `
-## Describe the bug
-A clear and concise description of what the bug is.
-
-## Additional context
-Add any other context about the problem here.
-
-## Diagnostic Information
+      const info = `
 *   **CLI Version:** ${cliVersion}
 *   **Git Commit:** ${GIT_COMMIT_INFO}
 *   **Operating System:** ${osVersion}
@@ -433,11 +417,11 @@ Add any other context about the problem here.
 *   **Memory Usage:** ${memoryUsage}
 `;
       let url =
-        'https://github.com/google-gemini/gemini-cli/issues/new?template=bug_report.md';
+        'https://github.com/google-gemini/gemini-cli/issues/new?template=bug_report.yml';
       if (description) {
         url += `&title=${encodeURIComponent(description)}`;
       }
-      url += `&body=${encodeURIComponent(diagnosticInfo)}`;
+      url += `&info=${encodeURIComponent(info)}`;
       return url;
     };
 
@@ -469,7 +453,7 @@ Add any other context about the problem here.
       process.env.SEATBELT_PROFILE = 'permissive-open';
       const bugCommand = {
         urlTemplate:
-          'https://custom-bug-tracker.com/new?title={title}&body={body}',
+          'https://custom-bug-tracker.com/new?title={title}&info={info}',
       };
       mockConfig = {
         ...mockConfig,
@@ -479,14 +463,7 @@ Add any other context about the problem here.
 
       const { handleSlashCommand } = getProcessor();
       const bugDescription = 'This is a custom bug';
-      const diagnosticInfo = `
-## Describe the bug
-A clear and concise description of what the bug is.
-
-## Additional context
-Add any other context about the problem here.
-
-## Diagnostic Information
+      const info = `
 *   **CLI Version:** 0.1.0
 *   **Git Commit:** ${GIT_COMMIT_INFO}
 *   **Operating System:** test-platform test-node-version
@@ -496,7 +473,7 @@ Add any other context about the problem here.
 `;
       const expectedUrl = bugCommand.urlTemplate
         .replace('{title}', encodeURIComponent(bugDescription))
-        .replace('{body}', encodeURIComponent(diagnosticInfo));
+        .replace('{info}', encodeURIComponent(info));
 
       let commandResult: SlashCommandActionReturn | boolean = false;
       await act(async () => {
