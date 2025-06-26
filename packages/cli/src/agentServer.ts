@@ -34,10 +34,12 @@ import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { Content, Part, FunctionCall } from '@google/genai';
 
-export async function runAgentServer(config: Config) {
+export async function runAgentServer(
+  config: Config,
+  authMethod: AuthType = AuthType.USE_GEMINI,
+) {
   // todo!("make authentication part of the protocol")
-  // await config.refreshAuth(AuthType.USE_GEMINI);
-  await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE_PERSONAL);
+  await config.refreshAuth(authMethod);
 
   const stdout = Writable.toWeb(process.stdout);
   const stdin = Readable.toWeb(process.stdin) as ReadableStream;

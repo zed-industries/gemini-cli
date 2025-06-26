@@ -163,7 +163,7 @@ export async function main() {
   }
 
   if (config.getMode() === Mode.ACP) {
-    return runAgentServer(config);
+    return runAgentServer(config, settings.merged.selectedAuthType);
   }
 
   let input = config.getQuestion();
