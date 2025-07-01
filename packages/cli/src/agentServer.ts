@@ -7,12 +7,13 @@
 import {
   AuthType,
   Config,
-  executeToolCall,
   GeminiChat,
-  ToolCallRequestInfo,
   ToolRegistry,
   unreachable,
   AcpToolEnvironment,
+  logToolCall,
+  ToolResult,
+  convertToFunctionResponse,
 } from '@google/gemini-cli-core';
 import {
   Agent,
@@ -29,10 +30,11 @@ import {
   ThreadEntry,
   SendMessageParams,
   SendMessageResponse,
+  ThreadId,
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
-import { Content, Part, FunctionCall } from '@google/genai';
+import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 
 export async function runAgentServer(
   config: Config,
@@ -56,7 +58,7 @@ class GeminiAgent implements Agent {
   constructor(
     private config: Config,
     private client: Client,
-  ) {}
+  ) { }
 
   async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
     return {
@@ -184,50 +186,104 @@ class GeminiAgent implements Agent {
         const toolResponseParts: Part[] = [];
 
         for (const fc of functionCalls) {
-          const callId = fc.id ?? `${fc.name}-${Date.now()}`;
-          const requestInfo: ToolCallRequestInfo = {
-            callId,
-            isClientInitiated: true, // todo!()
-            name: fc.name as string,
-            args: (fc.args ?? {}) as Record<string, unknown>,
-          };
+          const response = await this.#runTool(params.threadId, fc);
 
-          const toolResponse = await executeToolCall(
-            this.config,
-            requestInfo,
-            toolRegistry,
-            abortController.signal,
-          );
+          const parts = Array.isArray(response)
+            ? response
+            : [response];
 
-          // todo! report properly
-          if (toolResponse.error) {
-            this.client.streamMessageChunk({
-              threadId: params.threadId,
-              chunk: {
-                type: 'text',
-                chunk: `\n\n[DEBUG] ${requestInfo.name} error:\n${toolResponse.error}\n\n`,
-              },
-            });
-          }
-
-          if (toolResponse.responseParts) {
-            const parts = Array.isArray(toolResponse.responseParts)
-              ? toolResponse.responseParts
-              : [toolResponse.responseParts];
-            for (const part of parts) {
-              if (typeof part === 'string') {
-                toolResponseParts.push({ text: part });
-              } else if (part) {
-                toolResponseParts.push(part);
-              }
+          for (const part of parts) {
+            if (typeof part === 'string') {
+              toolResponseParts.push({ text: part });
+            } else if (part) {
+              toolResponseParts.push(part);
             }
           }
-
-          nextMessage = { role: 'user', parts: toolResponseParts };
         }
+
+        nextMessage = { role: 'user', parts: toolResponseParts };
       }
     }
 
     return null;
+  }
+
+  async #runTool(threadId: ThreadId, fc: FunctionCall): Promise<PartListUnion> {
+    const callId = fc.id ?? `${fc.name}-${Date.now()}`;
+    const args = (fc.args ?? {}) as Record<string, unknown>;
+
+
+    const startTime = Date.now();
+
+    const errorResponse = (error: Error) => {
+      const durationMs = Date.now() - startTime;
+      logToolCall(this.config, {
+        'event.name': 'tool_call',
+        'event.timestamp': new Date().toISOString(),
+        function_name: fc.name ?? "",
+        function_args: args,
+        duration_ms: durationMs,
+        success: false,
+        error: error.message,
+      });
+
+      return [{
+        functionResponse: {
+          id: callId,
+          name: fc.name ?? "",
+          response: { error: error.message },
+        },
+      }];
+    };
+
+    if (!fc.name) {
+      return errorResponse(new Error("Missing function name"));
+    }
+
+    const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
+    const tool = toolRegistry.getTool(fc.name as string);
+
+    if (!tool) {
+      return errorResponse(new Error(
+        `Tool "${fc.name}" not found in registry.`,
+      ));
+    }
+
+    // todo! call tool.shouldConfirmExecute?
+
+    const result = await this.client.requestToolCall({ threadId, toolName: fc.name as string, description: tool.getDescription(args) });
+
+    if (result.type === "rejected") {
+      return errorResponse(new Error(
+        `Tool "${fc.name}" not allowed to run by the user.`,
+      ));
+    }
+
+    try {
+      const abortSignal = new AbortController().signal;
+      const toolResult: ToolResult = await tool.execute(
+        args,
+        abortSignal,
+      );
+
+      const durationMs = Date.now() - startTime;
+      logToolCall(this.config, {
+        'event.name': 'tool_call',
+        'event.timestamp': new Date().toISOString(),
+        function_name: fc.name,
+        function_args: args,
+        duration_ms: durationMs,
+        success: true,
+      });
+
+      return convertToFunctionResponse(
+        fc.name,
+        callId,
+        toolResult.llmContent,
+      );
+    } catch (e) {
+      const error = e instanceof Error ? e : new Error(String(e));
+      return errorResponse(error);
+    }
   }
 }
