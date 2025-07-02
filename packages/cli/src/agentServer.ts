@@ -14,7 +14,10 @@ import {
   logToolCall,
   ToolResult,
   convertToFunctionResponse,
+  ToolCallConfirmationDetails,
+  ToolConfirmationOutcome,
 } from '@google/gemini-cli-core';
+import * as acp from 'agentic-coding-protocol';
 import {
   Agent,
   Client,
@@ -59,7 +62,7 @@ class GeminiAgent implements Agent {
   constructor(
     private config: Config,
     private client: Client,
-  ) { }
+  ) {}
 
   async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
     return {
@@ -189,9 +192,7 @@ class GeminiAgent implements Agent {
         for (const fc of functionCalls) {
           const response = await this.#runTool(params.threadId, fc);
 
-          const parts = Array.isArray(response)
-            ? response
-            : [response];
+          const parts = Array.isArray(response) ? response : [response];
 
           for (const part of parts) {
             if (typeof part === 'string') {
@@ -220,60 +221,80 @@ class GeminiAgent implements Agent {
       logToolCall(this.config, {
         'event.name': 'tool_call',
         'event.timestamp': new Date().toISOString(),
-        function_name: fc.name ?? "",
+        function_name: fc.name ?? '',
         function_args: args,
         duration_ms: durationMs,
         success: false,
         error: error.message,
       });
 
-      return [{
-        functionResponse: {
-          id: callId,
-          name: fc.name ?? "",
-          response: { error: error.message },
+      return [
+        {
+          functionResponse: {
+            id: callId,
+            name: fc.name ?? '',
+            response: { error: error.message },
+          },
         },
-      }];
+      ];
     };
 
     if (!fc.name) {
-      return errorResponse(new Error("Missing function name"));
+      return errorResponse(new Error('Missing function name'));
     }
 
     const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
     const tool = toolRegistry.getTool(fc.name as string);
 
     if (!tool) {
-      return errorResponse(new Error(
-        `Tool "${fc.name}" not found in registry.`,
-      ));
+      return errorResponse(
+        new Error(`Tool "${fc.name}" not found in registry.`),
+      );
     }
 
-    // todo! call tool.shouldConfirmExecute?
+    let toolCallId;
 
-    const result = await this.client.requestToolCall({ threadId, toolName: fc.name as string, description: tool.getDescription(args) });
+    const abortSignal = new AbortController().signal;
+    const confirmationDetails = await tool.shouldConfirmExecute(
+      args,
+      abortSignal,
+    );
+    if (confirmationDetails) {
+      const result = await this.client.requestToolCallConfirmation({
+        threadId,
+        title: confirmationDetails.title,
+        confirmation: toAcpToolCallConfirmation(confirmationDetails),
+      });
 
-    if (result.type === "rejected") {
-      return errorResponse(new Error(
-        `Tool "${fc.name}" not allowed to run by the user.`,
-      ));
+      await confirmationDetails.onConfirm(toToolCallOutcome(result.outcome));
+      if (result.outcome === 'reject') {
+        return errorResponse(
+          new Error(`Tool "${fc.name}" not allowed to run by the user.`),
+        );
+      }
+
+      toolCallId = result.id;
+    } else {
+      // todo!()
     }
 
     try {
-      const abortSignal = new AbortController().signal;
-      const toolResult: ToolResult = await tool.execute(
-        args,
-        abortSignal,
-      );
+      const toolResult: ToolResult = await tool.execute(args, abortSignal);
 
       let content: ToolCallContent | null = null;
 
       if (toolResult.returnDisplay) {
-        if (typeof toolResult.returnDisplay === "string") {
-          content = { type: "markdown", markdown: '```\n' + toolResult.returnDisplay + '\n```' };
+        if (typeof toolResult.returnDisplay === 'string') {
+          content = {
+            type: 'markdown',
+            markdown: '```\n' + toolResult.returnDisplay + '\n```',
+          };
         } else {
           // todo! send as a type: "diff"
-          content = { type: "markdown", markdown: '```diff\n' + toolResult.returnDisplay.fileDiff + '\n```' };
+          content = {
+            type: 'markdown',
+            markdown: '```diff\n' + toolResult.returnDisplay.fileDiff + '\n```',
+          };
         }
       }
 
@@ -281,9 +302,9 @@ class GeminiAgent implements Agent {
 
       await this.client.updateToolCall({
         threadId,
-        toolCallId: result.id,
-        status: "finished",
-        content
+        toolCallId,
+        status: 'finished',
+        content,
       });
 
       const durationMs = Date.now() - startTime;
@@ -296,21 +317,75 @@ class GeminiAgent implements Agent {
         success: true,
       });
 
-      return convertToFunctionResponse(
-        fc.name,
-        callId,
-        toolResult.llmContent,
-      );
+      return convertToFunctionResponse(fc.name, callId, toolResult.llmContent);
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
       await this.client.updateToolCall({
         threadId,
-        toolCallId: result.id,
-        status: "error",
-        content: { type: "markdown", markdown: error.message }
+        toolCallId,
+        status: 'error',
+        content: { type: 'markdown', markdown: error.message },
       });
 
       return errorResponse(error);
     }
+  }
+}
+
+function toAcpToolCallConfirmation(
+  confirmationDetails: ToolCallConfirmationDetails,
+): acp.ToolCallConfirmation {
+  switch (confirmationDetails.type) {
+    case 'edit': {
+      return {
+        type: 'edit',
+        fileDiff: confirmationDetails.fileDiff,
+        fileName: confirmationDetails.fileName,
+      };
+    }
+    case 'exec': {
+      return {
+        type: 'execute',
+        rootCommand: confirmationDetails.rootCommand,
+        command: confirmationDetails.command,
+      };
+    }
+    case 'mcp': {
+      return {
+        type: 'mcp',
+        serverName: confirmationDetails.serverName,
+        toolName: confirmationDetails.toolName,
+        toolDisplayName: confirmationDetails.toolDisplayName,
+      };
+    }
+    case 'info': {
+      return {
+        type: 'info',
+        prompt: confirmationDetails.prompt,
+        urls: confirmationDetails.urls || [],
+      };
+    }
+    default: {
+      return unreachable(confirmationDetails);
+    }
+  }
+}
+
+function toToolCallOutcome(
+  outcome: acp.ToolCallConfirmationOutcome,
+): ToolConfirmationOutcome {
+  switch (outcome) {
+    case 'allow':
+      return ToolConfirmationOutcome.ProceedOnce;
+    case 'alwaysAllow':
+      return ToolConfirmationOutcome.ProceedAlways;
+    case 'alwaysAllowMcpServer':
+      return ToolConfirmationOutcome.ProceedAlwaysServer;
+    case 'alwaysAllowTool':
+      return ToolConfirmationOutcome.ProceedAlwaysTool;
+    case 'reject':
+      return ToolConfirmationOutcome.Cancel;
+    default:
+      return unreachable(outcome);
   }
 }
