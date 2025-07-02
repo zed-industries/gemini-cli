@@ -62,7 +62,7 @@ class GeminiAgent implements Agent {
   constructor(
     private config: Config,
     private client: Client,
-  ) {}
+  ) { }
 
   async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
     return {
@@ -365,9 +365,9 @@ function toAcpToolCallConfirmation(
     }
     case 'info': {
       return {
-        type: 'info',
-        prompt: confirmationDetails.prompt,
+        type: 'fetch',
         urls: confirmationDetails.urls || [],
+        description: confirmationDetails.prompt,
       };
     }
     default: {
