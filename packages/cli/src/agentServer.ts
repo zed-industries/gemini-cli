@@ -367,7 +367,7 @@ function toAcpToolCallConfirmation(
       return {
         type: 'fetch',
         urls: confirmationDetails.urls || [],
-        description: confirmationDetails.prompt,
+        description: confirmationDetails.urls?.length ? null : confirmationDetails.prompt,
       };
     }
     default: {
