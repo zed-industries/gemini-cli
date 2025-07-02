@@ -275,7 +275,13 @@ class GeminiAgent implements Agent {
 
       toolCallId = result.id;
     } else {
-      // todo!()
+      const result = await this.client.pushToolCall({
+        threadId,
+        title: tool.displayName,
+        description: tool.description,
+      });
+
+      toolCallId = result.id;
     }
 
     try {
