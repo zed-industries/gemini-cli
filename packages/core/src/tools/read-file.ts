@@ -11,10 +11,9 @@ import { BaseTool, ToolResult } from './tools.js';
 import {
   isWithinRoot,
   processSingleFileContent,
-  ToolEnvironment,
+  getSpecificMimeType,
 } from '../utils/fileUtils.js';
 import { Config } from '../config/config.js';
-import { getSpecificMimeType } from '../utils/fileUtils.js';
 import {
   recordFileOperationMetric,
   FileOperation,
