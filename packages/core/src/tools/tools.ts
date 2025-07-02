@@ -200,6 +200,8 @@ export type ToolResultDisplay = string | FileDiff;
 export interface FileDiff {
   fileDiff: string;
   fileName: string;
+  originalContent: string | null;
+  newContent: string;
 }
 
 export interface ToolEditConfirmationDetails {
@@ -208,6 +210,8 @@ export interface ToolEditConfirmationDetails {
   onConfirm: (outcome: ToolConfirmationOutcome) => Promise<void>;
   fileName: string;
   fileDiff: string;
+  originalContent: string | null;
+  newContent: string;
   isModifying?: boolean;
 }
 

@@ -336,6 +336,8 @@ Expectation for required parameters:
       title: `Confirm Edit: ${shortenPath(makeRelative(params.file_path, this.rootDirectory))}`,
       fileName,
       fileDiff,
+      originalContent: editData.currentContent,
+      newContent: editData.newContent,
       onConfirm: async (outcome: ToolConfirmationOutcome) => {
         if (outcome === ToolConfirmationOutcome.ProceedAlways) {
           this.config.setApprovalMode(ApprovalMode.AUTO_EDIT);
@@ -421,7 +423,7 @@ Expectation for required parameters:
           'Proposed',
           DEFAULT_DIFF_OPTIONS,
         );
-        displayResult = { fileDiff, fileName };
+        displayResult = { fileDiff, fileName, originalContent: editData.currentContent, newContent: editData.newContent };
       }
 
       const llmSuccessMessageParts = [

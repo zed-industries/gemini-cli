@@ -297,10 +297,11 @@ class GeminiAgent implements Agent {
             markdown: '```\n' + toolResult.returnDisplay + '\n```',
           };
         } else {
-          // todo! send as a type: "diff"
           content = {
-            type: 'markdown',
-            markdown: '```diff\n' + toolResult.returnDisplay.fileDiff + '\n```',
+            type: 'diff',
+            path: toolResult.returnDisplay.fileName,
+            oldText: toolResult.returnDisplay.originalContent,
+            newText: toolResult.returnDisplay.newContent,
           };
         }
       }
