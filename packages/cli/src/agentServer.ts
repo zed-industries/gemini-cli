@@ -35,22 +35,21 @@ import {
   SendMessageResponse,
   ThreadId,
   ToolCallContent,
+  InitializeParams,
+  InitializeResponse,
+  AuthenticateParams,
+  AuthenticateResponse,
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
+import { LoadedSettings } from './config/settings.js';
 
-export async function runAgentServer(
-  config: Config,
-  authMethod: AuthType = AuthType.USE_GEMINI,
-) {
-  // todo!("make authentication part of the protocol")
-  await config.refreshAuth(authMethod);
-
+export async function runAgentServer(config: Config, settings: LoadedSettings) {
   const stdout = Writable.toWeb(process.stdout);
   const stdin = Readable.toWeb(process.stdin) as ReadableStream;
   Connection.agentToClient(
-    (client: Client) => new GeminiAgent(config, client),
+    (client: Client) => new GeminiAgent(config, settings, client),
     stdout,
     stdin,
   );
@@ -61,8 +60,9 @@ class GeminiAgent implements Agent {
 
   constructor(
     private config: Config,
+    private settings: LoadedSettings,
     private client: Client,
-  ) { }
+  ) {}
 
   async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
     return {
@@ -76,6 +76,21 @@ class GeminiAgent implements Agent {
 
   async openThread(_params: OpenThreadParams): Promise<OpenThreadResponse> {
     throw new Error('Method not implemented.');
+  }
+
+  async initialize(_params: InitializeParams): Promise<InitializeResponse> {
+    if (this.settings.merged.selectedAuthType) {
+      await this.config.refreshAuth(this.settings.merged.selectedAuthType);
+      return { isAuthenticated: true };
+    }
+    return { isAuthenticated: false };
+  }
+
+  async authenticate(
+    _params: AuthenticateParams,
+  ): Promise<AuthenticateResponse> {
+    await this.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+    return null;
   }
 
   async createThread(
@@ -370,7 +385,9 @@ function toAcpToolCallConfirmation(
       return {
         type: 'fetch',
         urls: confirmationDetails.urls || [],
-        description: confirmationDetails.urls?.length ? null : confirmationDetails.prompt,
+        description: confirmationDetails.urls?.length
+          ? null
+          : confirmationDetails.prompt,
       };
     }
     default: {
