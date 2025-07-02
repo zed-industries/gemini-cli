@@ -262,7 +262,7 @@ class GeminiAgent implements Agent {
     if (confirmationDetails) {
       const result = await this.client.requestToolCallConfirmation({
         threadId,
-        displayName: tool.displayName,
+        label: tool.getDescription(args),
         confirmation: toAcpToolCallConfirmation(confirmationDetails),
       });
 
@@ -277,7 +277,7 @@ class GeminiAgent implements Agent {
     } else {
       const result = await this.client.pushToolCall({
         threadId,
-        displayName: tool.displayName,
+        label: tool.getDescription(args),
       });
 
       toolCallId = result.id;
