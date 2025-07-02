@@ -31,6 +31,7 @@ import {
   SendMessageParams,
   SendMessageResponse,
   ThreadId,
+  ToolCallContent,
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
@@ -212,7 +213,6 @@ class GeminiAgent implements Agent {
     const callId = fc.id ?? `${fc.name}-${Date.now()}`;
     const args = (fc.args ?? {}) as Record<string, unknown>;
 
-
     const startTime = Date.now();
 
     const errorResponse = (error: Error) => {
@@ -265,6 +265,24 @@ class GeminiAgent implements Agent {
         args,
         abortSignal,
       );
+
+      let content: ToolCallContent | null = null;
+
+      if (toolResult.returnDisplay) {
+        if (typeof toolResult.returnDisplay === "string") {
+          content = { type: "markdown", markdown: '```\n' + toolResult.returnDisplay + '\n```' };
+        } else {
+          // todo! send as a type: "diff"
+          content = { type: "markdown", markdown: '```diff\n' + toolResult.returnDisplay.fileDiff + '\n```' };
+        }
+      }
+
+      await this.client.updateToolCall({
+        threadId,
+        toolCallId: result.id,
+        status: "finished",
+        content
+      });
 
       const durationMs = Date.now() - startTime;
       logToolCall(this.config, {
