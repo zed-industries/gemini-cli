@@ -277,6 +277,8 @@ class GeminiAgent implements Agent {
         }
       }
 
+      // todo! live updates?
+
       await this.client.updateToolCall({
         threadId,
         toolCallId: result.id,
@@ -301,6 +303,13 @@ class GeminiAgent implements Agent {
       );
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
+      await this.client.updateToolCall({
+        threadId,
+        toolCallId: result.id,
+        status: "error",
+        content: { type: "markdown", markdown: error.message }
+      });
+
       return errorResponse(error);
     }
   }
