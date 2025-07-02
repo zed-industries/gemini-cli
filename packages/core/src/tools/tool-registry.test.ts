@@ -108,7 +108,7 @@ const createMockCallableTool = (
 
 class MockTool extends BaseTool<{ param: string }, ToolResult> {
   constructor(name = 'mock-tool', description = 'A mock tool') {
-    super(name, name, description, {
+    super(name, name, description, 'hammer', {
       type: 'object',
       properties: {
         param: { type: 'string' },
@@ -145,10 +145,10 @@ describe('ToolRegistry', () => {
   beforeEach(() => {
     config = new Config(baseConfigParams);
     toolRegistry = new ToolRegistry(config);
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(console, 'debug').mockImplementation(() => {});
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => { });
+    vi.spyOn(console, 'error').mockImplementation(() => { });
+    vi.spyOn(console, 'debug').mockImplementation(() => { });
+    vi.spyOn(console, 'log').mockImplementation(() => { });
 
     // Reset mocks for MCP parts
     mockMcpClientConnect.mockReset().mockResolvedValue(undefined); // Default connect success

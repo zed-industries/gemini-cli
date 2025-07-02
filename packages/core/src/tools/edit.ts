@@ -69,8 +69,7 @@ interface CalculatedEdit {
  */
 export class EditTool
   extends BaseTool<EditToolParams, ToolResult>
-  implements ModifiableTool<EditToolParams>
-{
+  implements ModifiableTool<EditToolParams> {
   static readonly Name = 'replace';
   private readonly config: Config;
   private readonly rootDirectory: string;
@@ -95,6 +94,7 @@ Expectation for required parameters:
 4. NEVER escape \`old_string\` or \`new_string\`, that would break the exact literal text requirement.
 **Important:** If ANY of the above are not satisfied, the tool will fail. CRITICAL for \`old_string\`: Must uniquely identify the single instance to change. Include at least 3 lines of context BEFORE and AFTER the target text, matching whitespace and indentation precisely. If this string matches multiple locations, or does not match exactly, the tool will fail.
 **Multiple replacements:** Set \`expected_replacements\` to the number of occurrences you want to replace. The tool will replace ALL occurrences that match \`old_string\` exactly. Ensure the number of replacements matches your expectation.`,
+      'pencil',
       {
         properties: {
           file_path: {

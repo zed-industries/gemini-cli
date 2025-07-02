@@ -263,6 +263,7 @@ class GeminiAgent implements Agent {
       const result = await this.client.requestToolCallConfirmation({
         threadId,
         label: tool.getDescription(args),
+        icon: tool.acpIcon,
         confirmation: toAcpToolCallConfirmation(confirmationDetails),
       });
 
@@ -277,6 +278,7 @@ class GeminiAgent implements Agent {
     } else {
       const result = await this.client.pushToolCall({
         threadId,
+        icon: tool.acpIcon,
         label: tool.getDescription(args),
       });
 

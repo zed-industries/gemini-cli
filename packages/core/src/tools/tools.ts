@@ -5,6 +5,7 @@
  */
 
 import { FunctionDeclaration, PartListUnion, Schema } from '@google/genai';
+import * as acp from "agentic-coding-protocol";
 
 /**
  * Interface representing the base Tool functionality
@@ -27,6 +28,11 @@ export interface Tool<
    * Description of what the tool does
    */
   description: string;
+
+  /**
+   * The icon to display when interacting via ACP
+   */
+  acpIcon: acp.Icon;
 
   /**
    * Function declaration schema from @google/genai
@@ -102,6 +108,7 @@ export abstract class BaseTool<
     readonly name: string,
     readonly displayName: string,
     readonly description: string,
+    readonly acpIcon: acp.Icon,
     readonly parameterSchema: Record<string, unknown>,
     readonly isOutputMarkdown: boolean = true,
     readonly canUpdateOutput: boolean = false,

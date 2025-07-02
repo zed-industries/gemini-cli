@@ -64,8 +64,7 @@ interface GetCorrectedFileContentResult {
  */
 export class WriteFileTool
   extends BaseTool<WriteFileToolParams, ToolResult>
-  implements ModifiableTool<WriteFileToolParams>
-{
+  implements ModifiableTool<WriteFileToolParams> {
   static readonly Name: string = 'write_file';
   private readonly client: GeminiClient;
 
@@ -73,9 +72,10 @@ export class WriteFileTool
     super(
       WriteFileTool.Name,
       'WriteFile',
-      `Writes content to a specified file in the local filesystem. 
-      
+      `Writes content to a specified file in the local filesystem.
+
       The user has the ability to modify \`content\`. If modified, this will be stated in the response.`,
+      'pencil',
       {
         properties: {
           file_path: {

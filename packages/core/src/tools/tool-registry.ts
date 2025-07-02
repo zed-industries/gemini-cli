@@ -42,6 +42,7 @@ Signal: Signal number or \`(none)\` if no signal was received.
       name,
       name,
       description,
+      'hammer',
       parameterSchema,
       false, // isOutputMarkdown
       false, // canUpdateOutput
