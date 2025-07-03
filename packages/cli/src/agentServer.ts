@@ -362,8 +362,9 @@ function toAcpToolCallConfirmation(
     case 'edit': {
       return {
         type: 'edit',
-        fileDiff: confirmationDetails.fileDiff,
-        fileName: confirmationDetails.fileName,
+        path: confirmationDetails.fileName,
+        oldText: confirmationDetails.originalContent,
+        newText: confirmationDetails.newContent,
       };
     }
     case 'exec': {
