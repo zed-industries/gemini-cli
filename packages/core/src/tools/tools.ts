@@ -5,7 +5,7 @@
  */
 
 import { FunctionDeclaration, PartListUnion, Schema } from '@google/genai';
-import * as acp from "agentic-coding-protocol";
+import * as acp from '@zed-industries/agentic-coding-protocol';
 
 /**
  * Interface representing the base Tool functionality
@@ -94,7 +94,8 @@ export interface Tool<
 export abstract class BaseTool<
   TParams = unknown,
   TResult extends ToolResult = ToolResult,
-> implements Tool<TParams, TResult> {
+> implements Tool<TParams, TResult>
+{
   /**
    * Creates a new instance of BaseTool
    * @param name Internal name of the tool (used for API calls)
@@ -112,7 +113,7 @@ export abstract class BaseTool<
     readonly parameterSchema: Record<string, unknown>,
     readonly isOutputMarkdown: boolean = true,
     readonly canUpdateOutput: boolean = false,
-  ) { }
+  ) {}
 
   /**
    * Function declaration schema computed from name, description, and parameterSchema

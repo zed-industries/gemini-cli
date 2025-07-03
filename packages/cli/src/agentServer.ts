@@ -17,7 +17,7 @@ import {
   ToolConfirmationOutcome,
   clearCachedCredentialFile,
 } from '@google/gemini-cli-core';
-import * as acp from 'agentic-coding-protocol';
+import * as acp from '@zed-industries/agentic-coding-protocol';
 import {
   Agent,
   Client,
@@ -30,7 +30,7 @@ import {
   AuthenticateParams,
   AuthenticateResponse,
   CancelSendMessageResponse,
-} from 'agentic-coding-protocol';
+} from '@zed-industries/agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 import { LoadedSettings, SettingScope } from './config/settings.js';
