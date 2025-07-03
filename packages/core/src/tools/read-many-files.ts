@@ -334,13 +334,13 @@ Use this tool when the user's query implies needing the content of several files
 
       const filteredEntries = respectGitIgnore
         ? fileDiscovery
-          .filterFiles(
-            entries.map((p) => path.relative(toolBaseDir, p)),
-            {
-              respectGitIgnore,
-            },
-          )
-          .map((p) => path.resolve(toolBaseDir, p))
+            .filterFiles(
+              entries.map((p) => path.relative(toolBaseDir, p)),
+              {
+                respectGitIgnore,
+              },
+            )
+            .map((p) => path.resolve(toolBaseDir, p))
         : entries;
 
       let gitIgnoredCount = 0;
@@ -384,10 +384,7 @@ Use this tool when the user's query implies needing the content of several files
         .relative(toolBaseDir, filePath)
         .replace(/\\/g, '/');
 
-      const fileType = await detectFileType(
-        filePath,
-        this.config.getToolEnvironment(),
-      );
+      const fileType = detectFileType(filePath);
 
       if (fileType === 'image' || fileType === 'pdf') {
         const fileExtension = path.extname(filePath).toLowerCase();
@@ -412,7 +409,6 @@ Use this tool when the user's query implies needing the content of several files
       const fileReadResult = await processSingleFileContent(
         filePath,
         toolBaseDir,
-        this.config.getToolEnvironment(),
       );
 
       if (fileReadResult.error) {

@@ -11,7 +11,6 @@ import { SchemaValidator } from '../utils/schemaValidator.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { Config } from '../config/config.js';
 import { getResponseText } from '../utils/generateContentResponseUtilities.js';
-import { ToolEnvironment } from '../utils/fileUtils.js';
 
 interface GroundingChunkWeb {
   uri?: string;
@@ -51,8 +50,8 @@ export interface WebSearchToolParams {
  */
 export interface WebSearchToolResult extends ToolResult {
   sources?: GroundingMetadata extends { groundingChunks: GroundingChunkItem[] }
-  ? GroundingMetadata['groundingChunks']
-  : GroundingChunkItem[];
+    ? GroundingMetadata['groundingChunks']
+    : GroundingChunkItem[];
 }
 
 /**

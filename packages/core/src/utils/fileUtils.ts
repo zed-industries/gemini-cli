@@ -8,8 +8,6 @@ import fs from 'fs';
 import path from 'path';
 import { PartUnion } from '@google/genai';
 import mime from 'mime-types';
-import { Client, ThreadId } from 'agentic-coding-protocol';
-import { Buffer } from 'buffer';
 
 // Constants for text file processing
 const DEFAULT_MAX_LINES_TEXT_FILE = 2000;
@@ -55,104 +53,37 @@ export function isWithinRoot(
   );
 }
 
-interface FileStat {
-  exists: boolean;
-  isDirectory: boolean;
-  size: number;
-}
-interface ReadFileOptions {
-  limit?: number;
-}
-
-export interface ToolEnvironment {
-  stat(path: string): Promise<FileStat>;
-  readTextFile(path: string): Promise<string>;
-  readBinaryFile(path: string, options?: ReadFileOptions): Promise<Uint8Array>;
-}
-
-export class LocalToolEnvironment implements ToolEnvironment {
-  async stat(path: string): Promise<FileStat> {
-    if (!fs.existsSync(path)) {
-      return { exists: false, isDirectory: false, size: 0 };
-    }
-
-    const stat = await fs.promises.stat(path);
-    return { exists: true, isDirectory: stat.isDirectory(), size: stat.size };
-  }
-
-  async readTextFile(path: string): Promise<string> {
-    return await fs.promises.readFile(path, 'utf8');
-  }
-
-  async readBinaryFile(
-    path: string,
-    options: ReadFileOptions,
-  ): Promise<Uint8Array> {
-    if (options.limit !== undefined) {
-      const buffer = Buffer.alloc(options.limit);
-      const fd = fs.openSync(path, 'r');
-      const bytesRead = fs.readSync(fd, buffer, 0, options.limit, 0);
-      fs.closeSync(fd);
-      return buffer.subarray(0, bytesRead);
-    }
-    return await fs.promises.readFile(path);
-  }
-}
-
-export class AcpToolEnvironment implements ToolEnvironment {
-  constructor(
-    private client: Client,
-    private threadId: ThreadId,
-  ) {}
-
-  stat(path: string): Promise<FileStat> {
-    return this.client.stat({ path, threadId: this.threadId });
-  }
-
-  async readTextFile(path: string): Promise<string> {
-    const file = await this.client.readTextFile({
-      path,
-      threadId: this.threadId,
-    });
-    return file.content;
-  }
-
-  async readBinaryFile(
-    path: string,
-    _options: ReadFileOptions,
-  ): Promise<Uint8Array> {
-    const file = await this.client.readBinaryFile({
-      path,
-      threadId: this.threadId,
-    });
-    return Buffer.from(file.content, 'base64');
-  }
-}
-
 /**
  * Determines if a file is likely binary based on content sampling.
  * @param filePath Path to the file.
  * @returns True if the file appears to be binary.
  */
-export async function isBinaryFile(
-  filePath: string,
-  env: ToolEnvironment,
-): Promise<boolean> {
+export function isBinaryFile(filePath: string): boolean {
   try {
-    const buffer = await env.readBinaryFile(filePath, { limit: 4096 });
+    const fd = fs.openSync(filePath, 'r');
+    // Read up to 4KB or file size, whichever is smaller
+    const fileSize = fs.fstatSync(fd).size;
+    if (fileSize === 0) {
+      // Empty file is not considered binary for content checking
+      fs.closeSync(fd);
+      return false;
+    }
+    const bufferSize = Math.min(4096, fileSize);
+    const buffer = Buffer.alloc(bufferSize);
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    fs.closeSync(fd);
 
-    // Empty file is not considered binary for content checking
-    if (buffer.length === 0) return false;
+    if (bytesRead === 0) return false;
 
     let nonPrintableCount = 0;
-    for (let i = 0; i < buffer.length; i++) {
+    for (let i = 0; i < bytesRead; i++) {
       if (buffer[i] === 0) return true; // Null byte is a strong indicator
       if (buffer[i] < 9 || (buffer[i] > 13 && buffer[i] < 32)) {
         nonPrintableCount++;
       }
     }
     // If >30% non-printable characters, consider it binary
-    return nonPrintableCount / buffer.length > 0.3;
+    return nonPrintableCount / bytesRead > 0.3;
   } catch {
     // If any error occurs (e.g. file not found, permissions),
     // treat as not binary here; let higher-level functions handle existence/access errors.
@@ -165,10 +96,9 @@ export async function isBinaryFile(
  * @param filePath Path to the file.
  * @returns 'text', 'image', 'pdf', 'audio', 'video', or 'binary'.
  */
-export async function detectFileType(
+export function detectFileType(
   filePath: string,
-  env: ToolEnvironment,
-): Promise<'text' | 'image' | 'pdf' | 'audio' | 'video' | 'binary'> {
+): 'text' | 'image' | 'pdf' | 'audio' | 'video' | 'binary' {
   const ext = path.extname(filePath).toLowerCase();
 
   // The mimetype for "ts" is MPEG transport stream (a video format) but we want
@@ -232,7 +162,7 @@ export async function detectFileType(
 
   // Fallback to content-based check if mime type wasn't conclusive for image/pdf
   // and it's not a known binary extension.
-  if (await isBinaryFile(filePath, env)) {
+  if (isBinaryFile(filePath)) {
     return 'binary';
   }
 
@@ -259,13 +189,11 @@ export interface ProcessedFileReadResult {
 export async function processSingleFileContent(
   filePath: string,
   rootDirectory: string,
-  env: ToolEnvironment,
   offset?: number,
   limit?: number,
 ): Promise<ProcessedFileReadResult> {
   try {
-    const stat = await env.stat(filePath);
-    if (!stat.exists) {
+    if (!fs.existsSync(filePath)) {
       // Sync check is acceptable before async read
       return {
         llmContent: '',
@@ -273,7 +201,8 @@ export async function processSingleFileContent(
         error: `File not found: ${filePath}`,
       };
     }
-    if (stat.isDirectory) {
+    const stats = await fs.promises.stat(filePath);
+    if (stats.isDirectory()) {
       return {
         llmContent: '',
         returnDisplay: 'Path is a directory.',
@@ -281,7 +210,7 @@ export async function processSingleFileContent(
       };
     }
 
-    const fileSizeInBytes = stat.size;
+    const fileSizeInBytes = stats.size;
     // 20MB limit
     const maxFileSize = 20 * 1024 * 1024;
 
@@ -294,7 +223,7 @@ export async function processSingleFileContent(
       );
     }
 
-    const fileType = await detectFileType(filePath, env);
+    const fileType = detectFileType(filePath);
     const relativePathForDisplay = path
       .relative(rootDirectory, filePath)
       .replace(/\\/g, '/');
@@ -307,7 +236,7 @@ export async function processSingleFileContent(
         };
       }
       case 'text': {
-        const content = await env.readTextFile(filePath);
+        const content = await fs.promises.readFile(filePath, 'utf8');
         const lines = content.split('\n');
         const originalLineCount = lines.length;
 

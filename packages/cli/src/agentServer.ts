@@ -10,7 +10,6 @@ import {
   GeminiChat,
   ToolRegistry,
   unreachable,
-  AcpToolEnvironment,
   logToolCall,
   ToolResult,
   convertToFunctionResponse,
@@ -137,11 +136,6 @@ class GeminiAgent implements Agent {
     if (!chat) {
       throw new Error(`Thread not found: ${params.threadId}`);
     }
-    // todo!  the CLI only seems to support one thread at a time.
-    // should we remove the thread id param from all events and set the active one via a method?
-    this.config.setToolEnvironment(
-      new AcpToolEnvironment(this.client, params.threadId),
-    );
 
     const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
 

@@ -144,7 +144,6 @@ export class ReadFileTool extends BaseTool<ReadFileToolParams, ToolResult> {
     const result = await processSingleFileContent(
       params.absolute_path,
       this.rootDirectory,
-      this.config.getToolEnvironment(),
       params.offset,
       params.limit,
     );

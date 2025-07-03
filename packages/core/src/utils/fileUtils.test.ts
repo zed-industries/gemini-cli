@@ -25,8 +25,6 @@ import {
   isBinaryFile,
   detectFileType,
   processSingleFileContent,
-  LocalToolEnvironment,
-  ToolEnvironment,
 } from './fileUtils.js';
 
 vi.mock('mime-types', () => ({
@@ -46,7 +44,6 @@ describe('fileUtils', () => {
   let testBinaryFilePath: string;
   let nonExistentFilePath: string;
   let directoryPath: string;
-  const env: ToolEnvironment = new LocalToolEnvironment();
 
   beforeEach(() => {
     vi.resetAllMocks(); // Reset all mocks, including mime.lookup
@@ -147,7 +144,7 @@ describe('fileUtils', () => {
 
     it('should return false for an empty file', () => {
       actualNodeFs.writeFileSync(filePathForBinaryTest, '');
-      expect(isBinaryFile(filePathForBinaryTest, env)).toBe(false);
+      expect(isBinaryFile(filePathForBinaryTest)).toBe(false);
     });
 
     it('should return false for a typical text file', () => {
@@ -155,7 +152,7 @@ describe('fileUtils', () => {
         filePathForBinaryTest,
         'Hello, world!\nThis is a test file with normal text content.',
       );
-      expect(isBinaryFile(filePathForBinaryTest, env)).toBe(false);
+      expect(isBinaryFile(filePathForBinaryTest)).toBe(false);
     });
 
     it('should return true for a file with many null bytes', () => {
@@ -163,7 +160,7 @@ describe('fileUtils', () => {
         0x48, 0x65, 0x00, 0x6c, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00,
       ]); // "He\0llo\0\0\0\0\0"
       actualNodeFs.writeFileSync(filePathForBinaryTest, binaryContent);
-      expect(isBinaryFile(filePathForBinaryTest, env)).toBe(true);
+      expect(isBinaryFile(filePathForBinaryTest)).toBe(true);
     });
 
     it('should return true for a file with high percentage of non-printable ASCII', () => {
@@ -171,7 +168,7 @@ describe('fileUtils', () => {
         0x41, 0x42, 0x01, 0x02, 0x03, 0x04, 0x05, 0x43, 0x44, 0x06,
       ]); // AB\x01\x02\x03\x04\x05CD\x06
       actualNodeFs.writeFileSync(filePathForBinaryTest, binaryContent);
-      expect(isBinaryFile(filePathForBinaryTest, env)).toBe(true);
+      expect(isBinaryFile(filePathForBinaryTest)).toBe(true);
     });
 
     it('should return false if file access fails (e.g., ENOENT)', () => {
@@ -179,7 +176,7 @@ describe('fileUtils', () => {
       if (actualNodeFs.existsSync(filePathForBinaryTest)) {
         actualNodeFs.unlinkSync(filePathForBinaryTest);
       }
-      expect(isBinaryFile(filePathForBinaryTest, env)).toBe(false);
+      expect(isBinaryFile(filePathForBinaryTest)).toBe(false);
     });
   });
 
@@ -200,42 +197,42 @@ describe('fileUtils', () => {
     });
 
     it('should detect typescript type by extension (ts)', () => {
-      expect(detectFileType('file.ts', env)).toBe('text');
-      expect(detectFileType('file.test.ts', env)).toBe('text');
+      expect(detectFileType('file.ts')).toBe('text');
+      expect(detectFileType('file.test.ts')).toBe('text');
     });
 
     it('should detect image type by extension (png)', () => {
       mockMimeLookup.mockReturnValueOnce('image/png');
-      expect(detectFileType('file.png', env)).toBe('image');
+      expect(detectFileType('file.png')).toBe('image');
     });
 
     it('should detect image type by extension (jpeg)', () => {
       mockMimeLookup.mockReturnValueOnce('image/jpeg');
-      expect(detectFileType('file.jpg', env)).toBe('image');
+      expect(detectFileType('file.jpg')).toBe('image');
     });
 
     it('should detect pdf type by extension', () => {
       mockMimeLookup.mockReturnValueOnce('application/pdf');
-      expect(detectFileType('file.pdf', env)).toBe('pdf');
+      expect(detectFileType('file.pdf')).toBe('pdf');
     });
 
     it('should detect audio type by extension', () => {
       mockMimeLookup.mockReturnValueOnce('audio/mpeg');
-      expect(detectFileType('song.mp3', env)).toBe('audio');
+      expect(detectFileType('song.mp3')).toBe('audio');
     });
 
     it('should detect video type by extension', () => {
       mockMimeLookup.mockReturnValueOnce('video/mp4');
-      expect(detectFileType('movie.mp4', env)).toBe('video');
+      expect(detectFileType('movie.mp4')).toBe('video');
     });
 
     it('should detect known binary extensions as binary (e.g. .zip)', () => {
       mockMimeLookup.mockReturnValueOnce('application/zip');
-      expect(detectFileType('archive.zip', env)).toBe('binary');
+      expect(detectFileType('archive.zip')).toBe('binary');
     });
     it('should detect known binary extensions as binary (e.g. .exe)', () => {
       mockMimeLookup.mockReturnValueOnce('application/octet-stream'); // Common for .exe
-      expect(detectFileType('app.exe', env)).toBe('binary');
+      expect(detectFileType('app.exe')).toBe('binary');
     });
 
     it('should use isBinaryFile for unknown extensions and detect as binary', () => {
@@ -245,13 +242,13 @@ describe('fileUtils', () => {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
       ]);
       actualNodeFs.writeFileSync(filePathForDetectTest, binaryContent);
-      expect(detectFileType(filePathForDetectTest, env)).toBe('binary');
+      expect(detectFileType(filePathForDetectTest)).toBe('binary');
     });
 
     it('should default to text if mime type is unknown and content is not binary', () => {
       mockMimeLookup.mockReturnValueOnce(false); // Unknown mime type
       // filePathForDetectTest is already a text file by default from beforeEach
-      expect(detectFileType(filePathForDetectTest, env)).toBe('text');
+      expect(detectFileType(filePathForDetectTest)).toBe('text');
     });
   });
 
@@ -274,7 +271,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testTextFilePath,
         tempRootDir,
-        env,
       );
       expect(result.llmContent).toBe(content);
       expect(result.returnDisplay).toBe('');
@@ -285,7 +281,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         nonExistentFilePath,
         tempRootDir,
-        env,
       );
       expect(result.error).toContain('File not found');
       expect(result.returnDisplay).toContain('File not found');
@@ -299,7 +294,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testTextFilePath,
         tempRootDir,
-        env,
       );
       expect(result.error).toContain('Simulated read error');
       expect(result.returnDisplay).toContain('Simulated read error');
@@ -314,7 +308,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testImageFilePath,
         tempRootDir,
-        env,
       );
       expect(result.error).toContain('Simulated image read error');
       expect(result.returnDisplay).toContain('Simulated image read error');
@@ -327,7 +320,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testImageFilePath,
         tempRootDir,
-        env,
       );
       expect(
         (result.llmContent as { inlineData: unknown }).inlineData,
@@ -349,7 +341,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testPdfFilePath,
         tempRootDir,
-        env,
       );
       expect(
         (result.llmContent as { inlineData: unknown }).inlineData,
@@ -375,7 +366,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testBinaryFilePath,
         tempRootDir,
-        env,
       );
       expect(result.llmContent).toContain(
         'Cannot display content of binary file',
@@ -384,11 +374,7 @@ describe('fileUtils', () => {
     });
 
     it('should handle path being a directory', async () => {
-      const result = await processSingleFileContent(
-        directoryPath,
-        tempRootDir,
-        env,
-      );
+      const result = await processSingleFileContent(directoryPath, tempRootDir);
       expect(result.error).toContain('Path is a directory');
       expect(result.returnDisplay).toContain('Path is a directory');
     });
@@ -400,7 +386,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testTextFilePath,
         tempRootDir,
-        env,
         5,
         5,
       ); // Read lines 6-10
@@ -423,7 +408,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testTextFilePath,
         tempRootDir,
-        env,
         0,
         10,
       );
@@ -446,7 +430,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testTextFilePath,
         tempRootDir,
-        env,
       );
 
       expect(result.llmContent).toContain('Short line');
@@ -469,7 +452,6 @@ describe('fileUtils', () => {
       const result = await processSingleFileContent(
         testTextFilePath,
         tempRootDir,
-        env,
       );
 
       expect(result.error).toContain('File size exceeds the 20MB limit');
