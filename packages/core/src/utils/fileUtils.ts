@@ -58,6 +58,7 @@ export function isWithinRoot(
 interface FileStat {
   exists: boolean;
   isDirectory: boolean;
+  size: number;
 }
 interface ReadFileOptions {
   limit?: number;
@@ -72,10 +73,11 @@ export interface ToolEnvironment {
 export class LocalToolEnvironment implements ToolEnvironment {
   async stat(path: string): Promise<FileStat> {
     if (!fs.existsSync(path)) {
-      return { exists: false, isDirectory: false };
+      return { exists: false, isDirectory: false, size: 0 };
     }
 
-    return { exists: true, isDirectory: fs.statSync(path).isDirectory() };
+    const stat = await fs.promises.stat(path);
+    return { exists: true, isDirectory: stat.isDirectory(), size: stat.size };
   }
 
   async readTextFile(path: string): Promise<string> {
@@ -161,20 +163,34 @@ export async function isBinaryFile(
 /**
  * Detects the type of file based on extension and content.
  * @param filePath Path to the file.
- * @returns 'text', 'image', 'pdf', or 'binary'.
+ * @returns 'text', 'image', 'pdf', 'audio', 'video', or 'binary'.
  */
 export async function detectFileType(
   filePath: string,
   env: ToolEnvironment,
-): Promise<'text' | 'image' | 'pdf' | 'binary'> {
+): Promise<'text' | 'image' | 'pdf' | 'audio' | 'video' | 'binary'> {
   const ext = path.extname(filePath).toLowerCase();
-  const lookedUpMimeType = mime.lookup(filePath); // Returns false if not found, or the mime type string
 
-  if (lookedUpMimeType && lookedUpMimeType.startsWith('image/')) {
-    return 'image';
+  // The mimetype for "ts" is MPEG transport stream (a video format) but we want
+  // to assume these are typescript files instead.
+  if (ext === '.ts') {
+    return 'text';
   }
-  if (lookedUpMimeType && lookedUpMimeType === 'application/pdf') {
-    return 'pdf';
+
+  const lookedUpMimeType = mime.lookup(filePath); // Returns false if not found, or the mime type string
+  if (lookedUpMimeType) {
+    if (lookedUpMimeType.startsWith('image/')) {
+      return 'image';
+    }
+    if (lookedUpMimeType.startsWith('audio/')) {
+      return 'audio';
+    }
+    if (lookedUpMimeType.startsWith('video/')) {
+      return 'video';
+    }
+    if (lookedUpMimeType === 'application/pdf') {
+      return 'pdf';
+    }
   }
 
   // Stricter binary check for common non-text extensions before content check
@@ -265,6 +281,19 @@ export async function processSingleFileContent(
       };
     }
 
+    const fileSizeInBytes = stat.size;
+    // 20MB limit
+    const maxFileSize = 20 * 1024 * 1024;
+
+    if (fileSizeInBytes > maxFileSize) {
+      throw new Error(
+        `File size exceeds the 20MB limit: ${filePath} (${(
+          fileSizeInBytes /
+          (1024 * 1024)
+        ).toFixed(2)}MB)`,
+      );
+    }
+
     const fileType = await detectFileType(filePath, env);
     const relativePathForDisplay = path
       .relative(rootDirectory, filePath)
@@ -322,7 +351,9 @@ export async function processSingleFileContent(
         };
       }
       case 'image':
-      case 'pdf': {
+      case 'pdf':
+      case 'audio':
+      case 'video': {
         const contentBuffer = await fs.promises.readFile(filePath);
         const base64Data = contentBuffer.toString('base64');
         return {
