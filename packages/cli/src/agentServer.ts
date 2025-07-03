@@ -15,6 +15,7 @@ import {
   convertToFunctionResponse,
   ToolCallConfirmationDetails,
   ToolConfirmationOutcome,
+  clearCachedCredentialFile,
 } from '@google/gemini-cli-core';
 import * as acp from 'agentic-coding-protocol';
 import {
@@ -32,16 +33,22 @@ import {
   AuthenticateParams,
   AuthenticateResponse,
   CancelSendMessageParams,
-  CancelSendMessageResponse
+  CancelSendMessageResponse,
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
-import { LoadedSettings } from './config/settings.js';
+import { LoadedSettings, SettingScope } from './config/settings.js';
 
 export async function runAgentServer(config: Config, settings: LoadedSettings) {
   const stdout = Writable.toWeb(process.stdout);
   const stdin = Readable.toWeb(process.stdin) as ReadableStream;
+
+  // Stdout is used to send messages to the client, so console.log/console.info
+  // messages to stderr so that they don't interfere with ACP.
+  console.log = console.error;
+  console.info = console.error;
+
   Connection.agentToClient(
     (client: Client) => new GeminiAgent(config, settings, client),
     stdout,
@@ -50,8 +57,8 @@ export async function runAgentServer(config: Config, settings: LoadedSettings) {
 }
 
 type Thread = {
-  chat: GeminiChat,
-  pendingSend: AbortController | null,
+  chat: GeminiChat;
+  pendingSend: AbortController | null;
 };
 
 class GeminiAgent implements Agent {
@@ -61,12 +68,19 @@ class GeminiAgent implements Agent {
     private config: Config,
     private settings: LoadedSettings,
     private client: Client,
-  ) { }
+  ) {}
 
   async initialize(_params: InitializeParams): Promise<InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
-      await this.config.refreshAuth(this.settings.merged.selectedAuthType);
-      return { isAuthenticated: true };
+      let success = false;
+      try {
+        await this.config.refreshAuth(this.settings.merged.selectedAuthType);
+        success = true;
+      } catch (error) {
+        console.error('Failed to refresh auth:', error);
+      }
+
+      return { isAuthenticated: success };
     }
     return { isAuthenticated: false };
   }
@@ -74,7 +88,14 @@ class GeminiAgent implements Agent {
   async authenticate(
     _params: AuthenticateParams,
   ): Promise<AuthenticateResponse> {
+    await clearCachedCredentialFile();
     await this.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+    this.settings.setValue(
+      SettingScope.User,
+      'selectedAuthType',
+      AuthType.LOGIN_WITH_GOOGLE,
+    );
+
     return null;
   }
 
@@ -96,14 +117,16 @@ class GeminiAgent implements Agent {
     return { threadId };
   }
 
-  async cancelSendMessage(params: CancelSendMessageParams): Promise<CancelSendMessageResponse> {
+  async cancelSendMessage(
+    params: CancelSendMessageParams,
+  ): Promise<CancelSendMessageResponse> {
     const thread = this.threads.get(params.threadId);
     if (!thread) {
       throw new Error(`Thread not found: ${params.threadId}`);
     }
 
     if (!thread.pendingSend) {
-      throw new Error("Not currently generating");
+      throw new Error('Not currently generating');
     }
 
     thread.pendingSend.abort();
@@ -193,7 +216,11 @@ class GeminiAgent implements Agent {
         const toolResponseParts: Part[] = [];
 
         for (const fc of functionCalls) {
-          const response = await this.#runTool(params.threadId, pendingSend.signal, fc);
+          const response = await this.#runTool(
+            params.threadId,
+            pendingSend.signal,
+            fc,
+          );
 
           const parts = Array.isArray(response) ? response : [response];
 
@@ -213,7 +240,11 @@ class GeminiAgent implements Agent {
     return null;
   }
 
-  async #runTool(threadId: ThreadId, abortSignal: AbortSignal, fc: FunctionCall): Promise<PartListUnion> {
+  async #runTool(
+    threadId: ThreadId,
+    abortSignal: AbortSignal,
+    fc: FunctionCall,
+  ): Promise<PartListUnion> {
     const callId = fc.id ?? `${fc.name}-${Date.now()}`;
     const args = (fc.args ?? {}) as Record<string, unknown>;
 
