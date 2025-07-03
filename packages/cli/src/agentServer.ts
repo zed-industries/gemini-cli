@@ -23,8 +23,8 @@ import {
   Connection,
   CreateThreadParams,
   CreateThreadResponse,
-  SendMessageParams,
-  SendMessageResponse,
+  SendUserMessageParams,
+  SendUserMessageResponse,
   ThreadId,
   ToolCallContent,
   InitializeParams,
@@ -89,7 +89,9 @@ class GeminiAgent implements Agent {
     return { threadId };
   }
 
-  async sendMessage(params: SendMessageParams): Promise<SendMessageResponse> {
+  async sendUserMessage(
+    params: SendUserMessageParams,
+  ): Promise<SendUserMessageResponse> {
     const chat = this.threads.get(params.threadId);
     if (!chat) {
       throw new Error(`Thread not found: ${params.threadId}`);
@@ -133,15 +135,15 @@ class GeminiAgent implements Agent {
         if (resp.candidates && resp.candidates.length > 0) {
           const candidate = resp.candidates[0];
           for (const part of candidate.content?.parts ?? []) {
-            if (part.thought || !part.text) {
+            if (!part.text) {
               // todo!
               continue;
             }
 
-            this.client.streamMessageChunk({
+            this.client.streamAssistantMessageChunk({
               threadId: params.threadId,
               chunk: {
-                type: 'text',
+                type: part.thought ? 'thought' : 'text',
                 chunk: part.text,
               },
             });
