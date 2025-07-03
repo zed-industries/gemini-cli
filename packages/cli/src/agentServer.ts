@@ -23,13 +23,6 @@ import {
   Connection,
   CreateThreadParams,
   CreateThreadResponse,
-  GetThreadsParams,
-  GetThreadsResponse,
-  GetThreadEntriesParams,
-  GetThreadEntriesResponse,
-  OpenThreadParams,
-  OpenThreadResponse,
-  ThreadEntry,
   SendMessageParams,
   SendMessageResponse,
   ThreadId,
@@ -63,20 +56,6 @@ class GeminiAgent implements Agent {
     private client: Client,
   ) {}
 
-  async getThreads(_params: GetThreadsParams): Promise<GetThreadsResponse> {
-    return {
-      threads: Array.from(this.threads.entries()).map(([id, _chat]) => ({
-        id,
-        title: 'todo!()',
-        modifiedAt: new Date().toISOString(), // todo!()
-      })),
-    };
-  }
-
-  async openThread(_params: OpenThreadParams): Promise<OpenThreadResponse> {
-    throw new Error('Method not implemented.');
-  }
-
   async initialize(_params: InitializeParams): Promise<InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
       await this.config.refreshAuth(this.settings.merged.selectedAuthType);
@@ -108,27 +87,6 @@ class GeminiAgent implements Agent {
     // await logger.saveCheckpoint(history, thread_id);
 
     return { threadId };
-  }
-  async getThreadEntries(
-    params: GetThreadEntriesParams,
-  ): Promise<GetThreadEntriesResponse> {
-    const thread = this.threads.get(params.threadId);
-    if (!thread) {
-      throw new Error(`Thread not found: ${params.threadId}`);
-    }
-    const entries = thread.getHistory().map<ThreadEntry>((content) => ({
-      type: 'message',
-      role: content.role === 'user' ? 'user' : 'assistant',
-      chunks:
-        content.parts
-          // todo! Map the other types of content
-          ?.filter((part) => !!part.text)
-          .map((part) => ({
-            type: 'text',
-            chunk: part.text || '',
-          })) || [],
-    }));
-    return { entries };
   }
 
   async sendMessage(params: SendMessageParams): Promise<SendMessageResponse> {
