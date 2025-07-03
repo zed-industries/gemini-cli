@@ -227,10 +227,21 @@ class GeminiAgent implements Agent {
       abortSignal,
     );
     if (confirmationDetails) {
+      let content: ToolCallContent | null = null;
+      if (confirmationDetails.type === 'edit') {
+        content = {
+          type: 'diff',
+          path: confirmationDetails.fileName,
+          oldText: confirmationDetails.originalContent,
+          newText: confirmationDetails.newContent,
+        };
+      }
+
       const result = await this.client.requestToolCallConfirmation({
         threadId,
         label: tool.getDescription(args),
         icon: tool.acpIcon,
+        content,
         confirmation: toAcpToolCallConfirmation(confirmationDetails),
       });
 
@@ -312,12 +323,7 @@ function toAcpToolCallConfirmation(
 ): acp.ToolCallConfirmation {
   switch (confirmationDetails.type) {
     case 'edit': {
-      return {
-        type: 'edit',
-        path: confirmationDetails.fileName,
-        oldText: confirmationDetails.originalContent,
-        newText: confirmationDetails.newContent,
-      };
+      return { type: 'edit' };
     }
     case 'exec': {
       return {
