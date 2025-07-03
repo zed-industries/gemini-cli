@@ -22,21 +22,16 @@ import {
   Agent,
   Client,
   Connection,
-  CreateThreadParams,
-  CreateThreadResponse,
   SendUserMessageParams,
   SendUserMessageResponse,
-  ThreadId,
   ToolCallContent,
   InitializeParams,
   InitializeResponse,
   AuthenticateParams,
   AuthenticateResponse,
-  CancelSendMessageParams,
   CancelSendMessageResponse,
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
-import { randomUUID } from 'node:crypto';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 import { LoadedSettings, SettingScope } from './config/settings.js';
 
@@ -56,13 +51,9 @@ export async function runAgentServer(config: Config, settings: LoadedSettings) {
   );
 }
 
-type Thread = {
-  chat: GeminiChat;
-  pendingSend: AbortController | null;
-};
-
 class GeminiAgent implements Agent {
-  threads: Map<string, Thread> = new Map();
+  chat?: GeminiChat;
+  pendingSend?: AbortController;
 
   constructor(
     private config: Config,
@@ -99,38 +90,13 @@ class GeminiAgent implements Agent {
     return null;
   }
 
-  async createThread(
-    _params: CreateThreadParams,
-  ): Promise<CreateThreadResponse> {
-    const geminiClient = this.config.getGeminiClient();
-    const chat = await geminiClient.startChat();
-    const threadId = randomUUID();
-
-    this.threads.set(threadId, { chat, pendingSend: null });
-
-    // todo!("Save thread so that it can be resumed later.");
-    // const logger = new Logger(this.config.getSessionId());
-    // await logger.initialize();
-    // const history = chat.getHistory();
-    // await logger.saveCheckpoint(history, thread_id);
-
-    return { threadId };
-  }
-
-  async cancelSendMessage(
-    params: CancelSendMessageParams,
-  ): Promise<CancelSendMessageResponse> {
-    const thread = this.threads.get(params.threadId);
-    if (!thread) {
-      throw new Error(`Thread not found: ${params.threadId}`);
-    }
-
-    if (!thread.pendingSend) {
+  async cancelSendMessage(): Promise<CancelSendMessageResponse> {
+    if (!this.pendingSend) {
       throw new Error('Not currently generating');
     }
 
-    thread.pendingSend.abort();
-    thread.pendingSend = null;
+    this.pendingSend.abort();
+    delete this.pendingSend;
 
     return null;
   }
@@ -138,16 +104,16 @@ class GeminiAgent implements Agent {
   async sendUserMessage(
     params: SendUserMessageParams,
   ): Promise<SendUserMessageResponse> {
-    const thread = this.threads.get(params.threadId);
-    if (!thread) {
-      throw new Error(`Thread not found: ${params.threadId}`);
+    this.pendingSend?.abort();
+    const pendingSend = new AbortController();
+    this.pendingSend = pendingSend;
+
+    if (!this.chat) {
+      const geminiClient = this.config.getGeminiClient();
+      this.chat = await geminiClient.startChat();
     }
 
-    thread.pendingSend?.abort();
-    const pendingSend = new AbortController();
-    thread.pendingSend = pendingSend;
-
-    const { chat } = thread;
+    const chat = this.chat!;
 
     const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
 
@@ -198,7 +164,6 @@ class GeminiAgent implements Agent {
             }
 
             this.client.streamAssistantMessageChunk({
-              threadId: params.threadId,
               chunk: {
                 type: part.thought ? 'thought' : 'text',
                 chunk: part.text,
@@ -216,11 +181,7 @@ class GeminiAgent implements Agent {
         const toolResponseParts: Part[] = [];
 
         for (const fc of functionCalls) {
-          const response = await this.#runTool(
-            params.threadId,
-            pendingSend.signal,
-            fc,
-          );
+          const response = await this.#runTool(pendingSend.signal, fc);
 
           const parts = Array.isArray(response) ? response : [response];
 
@@ -241,7 +202,6 @@ class GeminiAgent implements Agent {
   }
 
   async #runTool(
-    threadId: ThreadId,
     abortSignal: AbortSignal,
     fc: FunctionCall,
   ): Promise<PartListUnion> {
@@ -303,7 +263,6 @@ class GeminiAgent implements Agent {
       }
 
       const result = await this.client.requestToolCallConfirmation({
-        threadId,
         label: tool.getDescription(args),
         icon: tool.acpIcon,
         content,
@@ -333,7 +292,6 @@ class GeminiAgent implements Agent {
       toolCallId = result.id;
     } else {
       const result = await this.client.pushToolCall({
-        threadId,
         icon: tool.acpIcon,
         label: tool.getDescription(args),
       });
@@ -365,7 +323,6 @@ class GeminiAgent implements Agent {
       // todo! live updates?
 
       await this.client.updateToolCall({
-        threadId,
         toolCallId,
         status: 'finished',
         content,
@@ -385,7 +342,6 @@ class GeminiAgent implements Agent {
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
       await this.client.updateToolCall({
-        threadId,
         toolCallId,
         status: 'error',
         content: { type: 'markdown', markdown: error.message },
