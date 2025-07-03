@@ -31,6 +31,8 @@ import {
   InitializeResponse,
   AuthenticateParams,
   AuthenticateResponse,
+  CancelSendMessageParams,
+  CancelSendMessageResponse
 } from 'agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
@@ -47,14 +49,19 @@ export async function runAgentServer(config: Config, settings: LoadedSettings) {
   );
 }
 
+type Thread = {
+  chat: GeminiChat,
+  pendingSend: AbortController | null,
+};
+
 class GeminiAgent implements Agent {
-  threads: Map<string, GeminiChat> = new Map();
+  threads: Map<string, Thread> = new Map();
 
   constructor(
     private config: Config,
     private settings: LoadedSettings,
     private client: Client,
-  ) {}
+  ) { }
 
   async initialize(_params: InitializeParams): Promise<InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
@@ -78,7 +85,7 @@ class GeminiAgent implements Agent {
     const chat = await geminiClient.startChat();
     const threadId = randomUUID();
 
-    this.threads.set(threadId, chat);
+    this.threads.set(threadId, { chat, pendingSend: null });
 
     // todo!("Save thread so that it can be resumed later.");
     // const logger = new Logger(this.config.getSessionId());
@@ -89,13 +96,35 @@ class GeminiAgent implements Agent {
     return { threadId };
   }
 
+  async cancelSendMessage(params: CancelSendMessageParams): Promise<CancelSendMessageResponse> {
+    const thread = this.threads.get(params.threadId);
+    if (!thread) {
+      throw new Error(`Thread not found: ${params.threadId}`);
+    }
+
+    if (!thread.pendingSend) {
+      throw new Error("Not currently generating");
+    }
+
+    thread.pendingSend.abort();
+    thread.pendingSend = null;
+
+    return null;
+  }
+
   async sendUserMessage(
     params: SendUserMessageParams,
   ): Promise<SendUserMessageResponse> {
-    const chat = this.threads.get(params.threadId);
-    if (!chat) {
+    const thread = this.threads.get(params.threadId);
+    if (!thread) {
       throw new Error(`Thread not found: ${params.threadId}`);
     }
+
+    thread.pendingSend?.abort();
+    const pendingSend = new AbortController();
+    thread.pendingSend = pendingSend;
+
+    const { chat } = thread;
 
     const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
 
@@ -110,16 +139,21 @@ class GeminiAgent implements Agent {
       }
     });
 
-    const abortController = new AbortController();
     let nextMessage: Content | null = { role: 'user', parts };
 
     while (nextMessage !== null) {
+      if (pendingSend.signal.aborted) {
+        // todo!("test this runs when we cancel while we are waiting for tool confirmation or running ")
+        chat.addHistory(nextMessage);
+        break;
+      }
+
       const functionCalls: FunctionCall[] = [];
 
       const responseStream = await chat.sendMessageStream({
         message: nextMessage?.parts ?? [],
         config: {
-          abortSignal: abortController.signal,
+          abortSignal: pendingSend.signal,
           tools: [
             { functionDeclarations: toolRegistry.getFunctionDeclarations() },
           ],
@@ -128,7 +162,7 @@ class GeminiAgent implements Agent {
       nextMessage = null;
 
       for await (const resp of responseStream) {
-        if (abortController.signal.aborted) {
+        if (pendingSend.signal.aborted) {
           throw new Error('Aborted');
         }
 
@@ -159,7 +193,7 @@ class GeminiAgent implements Agent {
         const toolResponseParts: Part[] = [];
 
         for (const fc of functionCalls) {
-          const response = await this.#runTool(params.threadId, fc);
+          const response = await this.#runTool(params.threadId, pendingSend.signal, fc);
 
           const parts = Array.isArray(response) ? response : [response];
 
@@ -179,7 +213,7 @@ class GeminiAgent implements Agent {
     return null;
   }
 
-  async #runTool(threadId: ThreadId, fc: FunctionCall): Promise<PartListUnion> {
+  async #runTool(threadId: ThreadId, abortSignal: AbortSignal, fc: FunctionCall): Promise<PartListUnion> {
     const callId = fc.id ?? `${fc.name}-${Date.now()}`;
     const args = (fc.args ?? {}) as Record<string, unknown>;
 
@@ -222,8 +256,6 @@ class GeminiAgent implements Agent {
     }
 
     let toolCallId;
-
-    const abortSignal = new AbortController().signal;
     const confirmationDetails = await tool.shouldConfirmExecute(
       args,
       abortSignal,
@@ -248,10 +280,23 @@ class GeminiAgent implements Agent {
       });
 
       await confirmationDetails.onConfirm(toToolCallOutcome(result.outcome));
-      if (result.outcome === 'reject') {
-        return errorResponse(
-          new Error(`Tool "${fc.name}" not allowed to run by the user.`),
-        );
+      switch (result.outcome) {
+        case 'reject':
+          return errorResponse(
+            new Error(`Tool "${fc.name}" not allowed to run by the user.`),
+          );
+
+        case 'cancel':
+          return errorResponse(
+            new Error(`Tool "${fc.name}" was canceled by the user.`),
+          );
+        case 'allow':
+        case 'alwaysAllow':
+        case 'alwaysAllowMcpServer':
+        case 'alwaysAllowTool':
+          break;
+        default:
+          unreachable(result.outcome);
       }
 
       toolCallId = result.id;
@@ -370,6 +415,7 @@ function toToolCallOutcome(
     case 'alwaysAllowTool':
       return ToolConfirmationOutcome.ProceedAlwaysTool;
     case 'reject':
+    case 'cancel':
       return ToolConfirmationOutcome.Cancel;
     default:
       return unreachable(outcome);
