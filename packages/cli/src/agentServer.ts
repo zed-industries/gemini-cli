@@ -59,7 +59,7 @@ class GeminiAgent implements Agent {
     private config: Config,
     private settings: LoadedSettings,
     private client: Client,
-  ) {}
+  ) { }
 
   async initialize(_params: InitializeParams): Promise<InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
@@ -308,7 +308,7 @@ class GeminiAgent implements Agent {
         if (typeof toolResult.returnDisplay === 'string') {
           content = {
             type: 'markdown',
-            markdown: '```\n' + toolResult.returnDisplay + '\n```',
+            markdown: toolResult.returnDisplay,
           };
         } else {
           content = {
