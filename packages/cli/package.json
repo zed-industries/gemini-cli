@@ -31,7 +31,7 @@
   "dependencies": {
     "@google/gemini-cli-core": "*",
     "@types/update-notifier": "^6.0.8",
-    "@zed-industries/agentic-coding-protocol": "^0.0.1",
+    "@zed-industries/agentic-coding-protocol": "^0.0.2",
     "command-exists": "^1.2.9",
     "diff": "^7.0.0",
     "dotenv": "^16.6.1",
