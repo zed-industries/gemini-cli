@@ -69,7 +69,8 @@ interface CalculatedEdit {
  */
 export class EditTool
   extends BaseTool<EditToolParams, ToolResult>
-  implements ModifiableTool<EditToolParams> {
+  implements ModifiableTool<EditToolParams>
+{
   static readonly Name = 'replace';
   private readonly config: Config;
   private readonly rootDirectory: string;
@@ -423,7 +424,12 @@ Expectation for required parameters:
           'Proposed',
           DEFAULT_DIFF_OPTIONS,
         );
-        displayResult = { fileDiff, fileName, originalContent: editData.currentContent, newContent: editData.newContent };
+        displayResult = {
+          fileDiff,
+          fileName,
+          originalContent: editData.currentContent,
+          newContent: editData.newContent,
+        };
       }
 
       const llmSuccessMessageParts = [

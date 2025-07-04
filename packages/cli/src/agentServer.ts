@@ -20,19 +20,7 @@ import {
   getErrorMessage,
 } from '@google/gemini-cli-core';
 import * as acp from '@zed-industries/agentic-coding-protocol';
-import {
-  Agent,
-  Client,
-  Connection,
-  SendUserMessageParams,
-  SendUserMessageResponse,
-  ToolCallContent,
-  InitializeParams,
-  InitializeResponse,
-  AuthenticateParams,
-  AuthenticateResponse,
-  CancelSendMessageResponse,
-} from '@zed-industries/agentic-coding-protocol';
+import { Agent } from '@zed-industries/agentic-coding-protocol';
 import { Readable, Writable } from 'node:stream';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 import { LoadedSettings, SettingScope } from './config/settings.js';
@@ -48,8 +36,8 @@ export async function runAgentServer(config: Config, settings: LoadedSettings) {
   console.log = console.error;
   console.info = console.error;
 
-  Connection.agentToClient(
-    (client: Client) => new GeminiAgent(config, settings, client),
+  acp.Connection.agentToClient(
+    (client: acp.Client) => new GeminiAgent(config, settings, client),
     stdout,
     stdin,
   );
@@ -62,10 +50,12 @@ class GeminiAgent implements Agent {
   constructor(
     private config: Config,
     private settings: LoadedSettings,
-    private client: Client,
-  ) { }
+    private client: acp.Client,
+  ) {}
 
-  async initialize(_params: InitializeParams): Promise<InitializeResponse> {
+  async initialize(
+    _params: acp.InitializeParams,
+  ): Promise<acp.InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
       let success = false;
       try {
@@ -81,8 +71,8 @@ class GeminiAgent implements Agent {
   }
 
   async authenticate(
-    _params: AuthenticateParams,
-  ): Promise<AuthenticateResponse> {
+    _params: acp.AuthenticateParams,
+  ): Promise<acp.AuthenticateResponse> {
     await clearCachedCredentialFile();
     await this.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
     this.settings.setValue(
@@ -94,7 +84,7 @@ class GeminiAgent implements Agent {
     return null;
   }
 
-  async cancelSendMessage(): Promise<CancelSendMessageResponse> {
+  async cancelSendMessage(): Promise<acp.CancelSendMessageResponse> {
     if (!this.pendingSend) {
       throw new Error('Not currently generating');
     }
@@ -106,8 +96,8 @@ class GeminiAgent implements Agent {
   }
 
   async sendUserMessage(
-    params: SendUserMessageParams,
-  ): Promise<SendUserMessageResponse> {
+    params: acp.SendUserMessageParams,
+  ): Promise<acp.SendUserMessageResponse> {
     this.pendingSend?.abort();
     const pendingSend = new AbortController();
     this.pendingSend = pendingSend;
@@ -156,7 +146,10 @@ class GeminiAgent implements Agent {
           const candidate = resp.candidates[0];
           for (const part of candidate.content?.parts ?? []) {
             if (!part.text) {
-              console.warn('Generated a part type that is not supported by ACP', part);
+              console.warn(
+                'Generated a part type that is not supported by ACP',
+                part,
+              );
               continue;
             }
 
@@ -249,7 +242,7 @@ class GeminiAgent implements Agent {
       abortSignal,
     );
     if (confirmationDetails) {
-      let content: ToolCallContent | null = null;
+      let content: acp.ToolCallContent | null = null;
       if (confirmationDetails.type === 'edit') {
         content = {
           type: 'diff',

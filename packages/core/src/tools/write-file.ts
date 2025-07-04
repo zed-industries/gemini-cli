@@ -64,7 +64,8 @@ interface GetCorrectedFileContentResult {
  */
 export class WriteFileTool
   extends BaseTool<WriteFileToolParams, ToolResult>
-  implements ModifiableTool<WriteFileToolParams> {
+  implements ModifiableTool<WriteFileToolParams>
+{
   static readonly Name: string = 'write_file';
   private readonly client: GeminiClient;
 

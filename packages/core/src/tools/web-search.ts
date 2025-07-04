@@ -104,7 +104,6 @@ export class WebSearchTool extends BaseTool<
 
   async execute(
     params: WebSearchToolParams,
-
     signal: AbortSignal,
   ): Promise<WebSearchToolResult> {
     const validationError = this.validateParams(params);

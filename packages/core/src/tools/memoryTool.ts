@@ -181,7 +181,6 @@ export class MemoryTool extends BaseTool<SaveMemoryParams, ToolResult> {
 
   async execute(
     params: SaveMemoryParams,
-
     _signal: AbortSignal,
   ): Promise<ToolResult> {
     const { fact } = params;

@@ -201,7 +201,6 @@ export class LSTool extends BaseTool<LSToolParams, ToolResult> {
    */
   async execute(
     params: LSToolParams,
-
     _signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);

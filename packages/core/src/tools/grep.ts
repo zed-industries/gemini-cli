@@ -170,7 +170,6 @@ export class GrepTool extends BaseTool<GrepToolParams, ToolResult> {
    */
   async execute(
     params: GrepToolParams,
-
     signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);

@@ -158,7 +158,6 @@ describe('ReadFileTool', () => {
       });
 
       const result = await tool.execute(params, abortSignal);
-
       expect(mockProcessSingleFileContent).toHaveBeenCalledWith(
         filePath,
         tempRootDir,

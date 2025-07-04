@@ -39,7 +39,7 @@ class MockTool extends BaseTool<Record<string, unknown>, ToolResult> {
         title: 'Confirm Mock Tool',
         command: 'do_thing',
         rootCommand: 'do_thing',
-        onConfirm: async () => { },
+        onConfirm: async () => {},
       };
     }
     return false;
@@ -63,11 +63,11 @@ describe('CoreToolScheduler', () => {
       getFunctionDeclarations: () => [],
       tools: new Map(),
       discovery: {} as any,
-      registerTool: () => { },
+      registerTool: () => {},
       getToolByName: () => mockTool,
       getToolByDisplayName: () => mockTool,
       getTools: () => [],
-      discoverTools: async () => { },
+      discoverTools: async () => {},
       getAllTools: () => [],
       getToolsByServer: () => [],
     };

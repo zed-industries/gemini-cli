@@ -89,7 +89,7 @@ export class MCPServerConfig {
     readonly trust?: boolean,
     // Metadata
     readonly description?: string,
-  ) { }
+  ) {}
 }
 
 export interface SandboxConfig {

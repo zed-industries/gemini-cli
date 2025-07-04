@@ -278,7 +278,6 @@ Use this tool when the user's query implies needing the content of several files
 
   async execute(
     params: ReadManyFilesParams,
-
     signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateParams(params);

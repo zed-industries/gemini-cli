@@ -130,7 +130,6 @@ export class ReadFileTool extends BaseTool<ReadFileToolParams, ToolResult> {
 
   async execute(
     params: ReadFileToolParams,
-
     _signal: AbortSignal,
   ): Promise<ToolResult> {
     const validationError = this.validateToolParams(params);
