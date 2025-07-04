@@ -146,10 +146,6 @@ class GeminiAgent implements Agent {
           const candidate = resp.candidates[0];
           for (const part of candidate.content?.parts ?? []) {
             if (!part.text) {
-              console.warn(
-                'Generated a part type that is not supported by ACP',
-                part,
-              );
               continue;
             }
 
