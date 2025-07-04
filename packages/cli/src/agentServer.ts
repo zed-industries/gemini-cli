@@ -16,6 +16,8 @@ import {
   ToolCallConfirmationDetails,
   ToolConfirmationOutcome,
   clearCachedCredentialFile,
+  isNodeError,
+  getErrorMessage,
 } from '@google/gemini-cli-core';
 import * as acp from '@zed-industries/agentic-coding-protocol';
 import {
@@ -34,6 +36,8 @@ import {
 import { Readable, Writable } from 'node:stream';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 import { LoadedSettings, SettingScope } from './config/settings.js';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export async function runAgentServer(config: Config, settings: LoadedSettings) {
   const stdout = Writable.toWeb(process.stdout);
@@ -59,7 +63,7 @@ class GeminiAgent implements Agent {
     private config: Config,
     private settings: LoadedSettings,
     private client: Client,
-  ) { }
+  ) {}
 
   async initialize(_params: InitializeParams): Promise<InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
@@ -117,16 +121,10 @@ class GeminiAgent implements Agent {
 
     const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
 
-    const parts = params.message.chunks.map((chunk) => {
-      switch (chunk.type) {
-        case 'text':
-          return {
-            text: chunk.chunk,
-          };
-        default:
-          return unreachable(chunk.type);
-      }
-    });
+    const parts = await this.#resolveUserMessage(
+      params.message,
+      pendingSend.signal,
+    );
 
     let nextMessage: Content | null = { role: 'user', parts };
 
@@ -301,31 +299,14 @@ class GeminiAgent implements Agent {
 
     try {
       const toolResult: ToolResult = await tool.execute(args, abortSignal);
-
-      let content: ToolCallContent | null = null;
-
-      if (toolResult.returnDisplay) {
-        if (typeof toolResult.returnDisplay === 'string') {
-          content = {
-            type: 'markdown',
-            markdown: toolResult.returnDisplay,
-          };
-        } else {
-          content = {
-            type: 'diff',
-            path: toolResult.returnDisplay.fileName,
-            oldText: toolResult.returnDisplay.originalContent,
-            newText: toolResult.returnDisplay.newContent,
-          };
-        }
-      }
+      const toolCallContent = toToolCallContent(toolResult);
 
       // todo! live updates?
 
       await this.client.updateToolCall({
         toolCallId,
         status: 'finished',
-        content,
+        content: toolCallContent,
       });
 
       const durationMs = Date.now() - startTime;
@@ -349,6 +330,300 @@ class GeminiAgent implements Agent {
 
       return errorResponse(error);
     }
+  }
+
+  async #resolveUserMessage(
+    message: acp.UserMessage,
+    abortSignal: AbortSignal,
+  ): Promise<Part[]> {
+    const atPathCommandParts = message.chunks.filter(
+      (part) => part.type === 'path',
+    );
+
+    if (atPathCommandParts.length === 0) {
+      return message.chunks.map((chunk) => {
+        if (chunk.type === 'text') {
+          return { text: chunk.chunk };
+        } else {
+          throw new Error('Unexpected chunk type');
+        }
+      });
+    }
+
+    // Get centralized file discovery service
+    const fileDiscovery = this.config.getFileService();
+    const respectGitIgnore = this.config.getFileFilteringRespectGitIgnore();
+
+    const pathSpecsToRead: string[] = [];
+    const atPathToResolvedSpecMap = new Map<string, string>();
+    const contentLabelsForDisplay: string[] = [];
+    const ignoredPaths: string[] = [];
+
+    const toolRegistry = await this.config.getToolRegistry();
+    const readManyFilesTool = toolRegistry.getTool('read_many_files');
+    const globTool = toolRegistry.getTool('glob');
+
+    if (!readManyFilesTool) {
+      throw new Error('Error: read_many_files tool not found.');
+    }
+
+    for (const atPathPart of atPathCommandParts) {
+      const pathName = atPathPart.path;
+
+      // Check if path should be ignored by git
+      if (fileDiscovery.shouldGitIgnoreFile(pathName)) {
+        ignoredPaths.push(pathName);
+        // const reason = respectGitIgnore
+        //   ? 'git-ignored and will be skipped'
+        //   : 'ignored by custom patterns';
+        // todo!
+        // onDebugMessage(`Path ${pathName} is ${reason}.`);
+        continue;
+      }
+
+      let currentPathSpec = pathName;
+      let resolvedSuccessfully = false;
+
+      try {
+        const absolutePath = path.resolve(this.config.getTargetDir(), pathName);
+        const stats = await fs.stat(absolutePath);
+        if (stats.isDirectory()) {
+          currentPathSpec = pathName.endsWith('/')
+            ? `${pathName}**`
+            : `${pathName}/**`;
+          // todo!
+          // onDebugMessage(
+          //   `Path ${pathName} resolved to directory, using glob: ${currentPathSpec}`,
+          // );
+        } else {
+          // todo!
+          // onDebugMessage(`Path ${pathName} resolved to file: ${currentPathSpec}`);
+        }
+        resolvedSuccessfully = true;
+      } catch (error) {
+        if (isNodeError(error) && error.code === 'ENOENT') {
+          if (this.config.getEnableRecursiveFileSearch() && globTool) {
+            // todo!
+            // onDebugMessage(
+            //   `Path ${pathName} not found directly, attempting glob search.`,
+            // );
+            try {
+              const globResult = await globTool.execute(
+                {
+                  pattern: `**/*${pathName}*`,
+                  path: this.config.getTargetDir(),
+                },
+                abortSignal,
+              );
+              if (
+                globResult.llmContent &&
+                typeof globResult.llmContent === 'string' &&
+                !globResult.llmContent.startsWith('No files found') &&
+                !globResult.llmContent.startsWith('Error:')
+              ) {
+                const lines = globResult.llmContent.split('\n');
+                if (lines.length > 1 && lines[1]) {
+                  const firstMatchAbsolute = lines[1].trim();
+                  currentPathSpec = path.relative(
+                    this.config.getTargetDir(),
+                    firstMatchAbsolute,
+                  );
+                  // todo!
+                  // onDebugMessage(
+                  //   `Glob search for ${pathName} found ${firstMatchAbsolute}, using relative path: ${currentPathSpec}`,
+                  // );
+                  resolvedSuccessfully = true;
+                } else {
+                  // todo!
+                  // onDebugMessage(
+                  //   `Glob search for '**/*${pathName}*' did not return a usable path. Path ${pathName} will be skipped.`,
+                  // );
+                }
+              } else {
+                // todo!
+                // onDebugMessage(
+                //   `Glob search for '**/*${pathName}*' found no files or an error. Path ${pathName} will be skipped.`,
+                // );
+              }
+            } catch (globError) {
+              console.error(
+                `Error during glob search for ${pathName}: ${getErrorMessage(globError)}`,
+              );
+              // todo!
+              // onDebugMessage(
+              //   `Error during glob search for ${pathName}. Path ${pathName} will be skipped.`,
+              // );
+            }
+          } else {
+            // todo!
+            // onDebugMessage(
+            //   `Glob tool not found. Path ${pathName} will be skipped.`,
+            // );
+          }
+        } else {
+          console.error(
+            `Error stating path ${pathName}: ${getErrorMessage(error)}`,
+          );
+          // todo!
+          // onDebugMessage(
+          //   `Error stating path ${pathName}. Path ${pathName} will be skipped.`,
+          // );
+        }
+      }
+
+      if (resolvedSuccessfully) {
+        pathSpecsToRead.push(currentPathSpec);
+        atPathToResolvedSpecMap.set(pathName, currentPathSpec);
+        contentLabelsForDisplay.push(pathName);
+      }
+    }
+
+    // Construct the initial part of the query for the LLM
+    let initialQueryText = '';
+    for (let i = 0; i < message.chunks.length; i++) {
+      const chunk = message.chunks[i];
+      if (chunk.type === 'text') {
+        initialQueryText += chunk.chunk;
+      } else {
+        // type === 'atPath'
+        const resolvedSpec = atPathToResolvedSpecMap.get(chunk.path);
+        if (
+          i > 0 &&
+          initialQueryText.length > 0 &&
+          !initialQueryText.endsWith(' ') &&
+          resolvedSpec
+        ) {
+          // Add space if previous part was text and didn't end with space, or if previous was @path
+          const prevPart = message.chunks[i - 1];
+          if (
+            prevPart.type === 'text' ||
+            (prevPart.type === 'path' &&
+              atPathToResolvedSpecMap.has(prevPart.path))
+          ) {
+            initialQueryText += ' ';
+          }
+        }
+        if (resolvedSpec) {
+          initialQueryText += `@${resolvedSpec}`;
+        } else {
+          // If not resolved for reading (e.g. lone @ or invalid path that was skipped),
+          // add the original @-string back, ensuring spacing if it's not the first element.
+          if (
+            i > 0 &&
+            initialQueryText.length > 0 &&
+            !initialQueryText.endsWith(' ') &&
+            !chunk.path.startsWith(' ')
+          ) {
+            initialQueryText += ' ';
+          }
+          initialQueryText += `@${chunk.path}`;
+        }
+      }
+    }
+    initialQueryText = initialQueryText.trim();
+
+    // Inform user about ignored paths
+    if (ignoredPaths.length > 0) {
+      // todo!
+      // const ignoreType = respectGitIgnore ? 'git-ignored' : 'custom-ignored';
+      // onDebugMessage(
+      //   `Ignored ${ignoredPaths.length} ${ignoreType} files: ${ignoredPaths.join(', ')}`,
+      // );
+    }
+
+    // Fallback for lone "@" or completely invalid @-commands resulting in empty initialQueryText
+    if (pathSpecsToRead.length === 0) {
+      // todo!
+      // onDebugMessage('No valid file paths found in @ commands to read.');
+      return [{ text: initialQueryText }];
+    }
+
+    const processedQueryParts: Part[] = [{ text: initialQueryText }];
+
+    const toolArgs = {
+      paths: pathSpecsToRead,
+      respectGitIgnore, // Use configuration setting
+    };
+
+    const toolCall = await this.client.pushToolCall({
+      icon: readManyFilesTool.acpIcon,
+      label: readManyFilesTool.getDescription(toolArgs),
+    });
+    try {
+      const result = await readManyFilesTool.execute(toolArgs, abortSignal);
+      const content = toToolCallContent(result) || {
+        type: 'markdown',
+        markdown: `Successfully read: ${contentLabelsForDisplay.join(', ')}`,
+      };
+      await this.client.updateToolCall({
+        toolCallId: toolCall.id,
+        status: 'finished',
+        content,
+      });
+
+      if (Array.isArray(result.llmContent)) {
+        const fileContentRegex = /^--- (.*?) ---\n\n([\s\S]*?)\n\n$/;
+        processedQueryParts.push({
+          text: '\n--- Content from referenced files ---',
+        });
+        for (const part of result.llmContent) {
+          if (typeof part === 'string') {
+            const match = fileContentRegex.exec(part);
+            if (match) {
+              const filePathSpecInContent = match[1]; // This is a resolved pathSpec
+              const fileActualContent = match[2].trim();
+              processedQueryParts.push({
+                text: `\nContent from @${filePathSpecInContent}:\n`,
+              });
+              processedQueryParts.push({ text: fileActualContent });
+            } else {
+              processedQueryParts.push({ text: part });
+            }
+          } else {
+            // part is a Part object.
+            processedQueryParts.push(part);
+          }
+        }
+        processedQueryParts.push({ text: '\n--- End of content ---' });
+      } else {
+        // todo!
+        // onDebugMessage(
+        //   'read_many_files tool returned no content or empty content.',
+        // );
+      }
+
+      return processedQueryParts;
+    } catch (error: unknown) {
+      await this.client.updateToolCall({
+        toolCallId: toolCall.id,
+        status: 'error',
+        content: {
+          type: 'markdown',
+          markdown: `Error reading files (${contentLabelsForDisplay.join(', ')}): ${getErrorMessage(error)}`,
+        },
+      });
+      throw error;
+    }
+  }
+}
+
+function toToolCallContent(toolResult: ToolResult): acp.ToolCallContent | null {
+  if (toolResult.returnDisplay) {
+    if (typeof toolResult.returnDisplay === 'string') {
+      return {
+        type: 'markdown',
+        markdown: toolResult.returnDisplay,
+      };
+    } else {
+      return {
+        type: 'diff',
+        path: toolResult.returnDisplay.fileName,
+        oldText: toolResult.returnDisplay.originalContent,
+        newText: toolResult.returnDisplay.newContent,
+      };
+    }
+  } else {
+    return null;
   }
 }
 
