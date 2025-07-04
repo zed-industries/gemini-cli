@@ -50,7 +50,6 @@ export enum ApprovalMode {
   YOLO = 'yolo',
 }
 
-// todo! rename?
 export enum Mode {
   TUI = 'tui',
   ACP = 'acp',
@@ -90,7 +89,7 @@ export class MCPServerConfig {
     readonly trust?: boolean,
     // Metadata
     readonly description?: string,
-  ) {}
+  ) { }
 }
 
 export interface SandboxConfig {

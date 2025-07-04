@@ -132,8 +132,7 @@ async function parseArguments(): Promise<CliArgs> {
     })
     .option('acp', {
       type: 'boolean',
-      // todo!
-      description: 'Set the mode to ACP',
+      description: 'Starts the agent in ACP mode',
     })
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
     .alias('v', 'version')

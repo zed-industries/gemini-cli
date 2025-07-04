@@ -63,7 +63,7 @@ class GeminiAgent implements Agent {
     private config: Config,
     private settings: LoadedSettings,
     private client: Client,
-  ) {}
+  ) { }
 
   async initialize(_params: InitializeParams): Promise<InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
@@ -130,7 +130,6 @@ class GeminiAgent implements Agent {
 
     while (nextMessage !== null) {
       if (pendingSend.signal.aborted) {
-        // todo!("test this runs when we cancel while we are waiting for tool confirmation or running ")
         chat.addHistory(nextMessage);
         break;
       }
@@ -157,7 +156,7 @@ class GeminiAgent implements Agent {
           const candidate = resp.candidates[0];
           for (const part of candidate.content?.parts ?? []) {
             if (!part.text) {
-              // todo!
+              console.warn('Generated a part type that is not supported by ACP', part);
               continue;
             }
 
@@ -301,8 +300,6 @@ class GeminiAgent implements Agent {
       const toolResult: ToolResult = await tool.execute(args, abortSignal);
       const toolCallContent = toToolCallContent(toolResult);
 
-      // todo! live updates?
-
       await this.client.updateToolCall({
         toolCallId,
         status: 'finished',
@@ -373,11 +370,10 @@ class GeminiAgent implements Agent {
       // Check if path should be ignored by git
       if (fileDiscovery.shouldGitIgnoreFile(pathName)) {
         ignoredPaths.push(pathName);
-        // const reason = respectGitIgnore
-        //   ? 'git-ignored and will be skipped'
-        //   : 'ignored by custom patterns';
-        // todo!
-        // onDebugMessage(`Path ${pathName} is ${reason}.`);
+        const reason = respectGitIgnore
+          ? 'git-ignored and will be skipped'
+          : 'ignored by custom patterns';
+        console.warn(`Path ${pathName} is ${reason}.`);
         continue;
       }
 
@@ -391,22 +387,19 @@ class GeminiAgent implements Agent {
           currentPathSpec = pathName.endsWith('/')
             ? `${pathName}**`
             : `${pathName}/**`;
-          // todo!
-          // onDebugMessage(
-          //   `Path ${pathName} resolved to directory, using glob: ${currentPathSpec}`,
-          // );
+          console.warn(
+            `Path ${pathName} resolved to directory, using glob: ${currentPathSpec}`,
+          );
         } else {
-          // todo!
-          // onDebugMessage(`Path ${pathName} resolved to file: ${currentPathSpec}`);
+          console.warn(`Path ${pathName} resolved to file: ${currentPathSpec}`);
         }
         resolvedSuccessfully = true;
       } catch (error) {
         if (isNodeError(error) && error.code === 'ENOENT') {
           if (this.config.getEnableRecursiveFileSearch() && globTool) {
-            // todo!
-            // onDebugMessage(
-            //   `Path ${pathName} not found directly, attempting glob search.`,
-            // );
+            console.warn(
+              `Path ${pathName} not found directly, attempting glob search.`,
+            );
             try {
               const globResult = await globTool.execute(
                 {
@@ -428,46 +421,34 @@ class GeminiAgent implements Agent {
                     this.config.getTargetDir(),
                     firstMatchAbsolute,
                   );
-                  // todo!
-                  // onDebugMessage(
-                  //   `Glob search for ${pathName} found ${firstMatchAbsolute}, using relative path: ${currentPathSpec}`,
-                  // );
+                  console.warn(
+                    `Glob search for ${pathName} found ${firstMatchAbsolute}, using relative path: ${currentPathSpec}`,
+                  );
                   resolvedSuccessfully = true;
                 } else {
-                  // todo!
-                  // onDebugMessage(
-                  //   `Glob search for '**/*${pathName}*' did not return a usable path. Path ${pathName} will be skipped.`,
-                  // );
+                  console.warn(
+                    `Glob search for '**/*${pathName}*' did not return a usable path. Path ${pathName} will be skipped.`,
+                  );
                 }
               } else {
-                // todo!
-                // onDebugMessage(
-                //   `Glob search for '**/*${pathName}*' found no files or an error. Path ${pathName} will be skipped.`,
-                // );
+                console.warn(
+                  `Glob search for '**/*${pathName}*' found no files or an error. Path ${pathName} will be skipped.`,
+                );
               }
             } catch (globError) {
               console.error(
                 `Error during glob search for ${pathName}: ${getErrorMessage(globError)}`,
               );
-              // todo!
-              // onDebugMessage(
-              //   `Error during glob search for ${pathName}. Path ${pathName} will be skipped.`,
-              // );
             }
           } else {
-            // todo!
-            // onDebugMessage(
-            //   `Glob tool not found. Path ${pathName} will be skipped.`,
-            // );
+            console.warn(
+              `Glob tool not found. Path ${pathName} will be skipped.`,
+            );
           }
         } else {
           console.error(
-            `Error stating path ${pathName}: ${getErrorMessage(error)}`,
+            `Error stating path ${pathName}. Path ${pathName} will be skipped.`,
           );
-          // todo!
-          // onDebugMessage(
-          //   `Error stating path ${pathName}. Path ${pathName} will be skipped.`,
-          // );
         }
       }
 
@@ -524,17 +505,15 @@ class GeminiAgent implements Agent {
 
     // Inform user about ignored paths
     if (ignoredPaths.length > 0) {
-      // todo!
-      // const ignoreType = respectGitIgnore ? 'git-ignored' : 'custom-ignored';
-      // onDebugMessage(
-      //   `Ignored ${ignoredPaths.length} ${ignoreType} files: ${ignoredPaths.join(', ')}`,
-      // );
+      const ignoreType = respectGitIgnore ? 'git-ignored' : 'custom-ignored';
+      console.warn(
+        `Ignored ${ignoredPaths.length} ${ignoreType} files: ${ignoredPaths.join(', ')}`,
+      );
     }
 
     // Fallback for lone "@" or completely invalid @-commands resulting in empty initialQueryText
     if (pathSpecsToRead.length === 0) {
-      // todo!
-      // onDebugMessage('No valid file paths found in @ commands to read.');
+      console.warn('No valid file paths found in @ commands to read.');
       return [{ text: initialQueryText }];
     }
 
@@ -586,10 +565,9 @@ class GeminiAgent implements Agent {
         }
         processedQueryParts.push({ text: '\n--- End of content ---' });
       } else {
-        // todo!
-        // onDebugMessage(
-        //   'read_many_files tool returned no content or empty content.',
-        // );
+        console.warn(
+          'read_many_files tool returned no content or empty content.',
+        );
       }
 
       return processedQueryParts;
