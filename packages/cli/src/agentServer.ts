@@ -18,6 +18,7 @@ import {
   clearCachedCredentialFile,
   isNodeError,
   getErrorMessage,
+  isWithinRoot,
 } from '@google/gemini-cli-core';
 import * as acp from '@zed-industries/agentic-coding-protocol';
 import { Agent } from '@zed-industries/agentic-coding-protocol';
@@ -371,22 +372,30 @@ class GeminiAgent implements Agent {
 
       try {
         const absolutePath = path.resolve(this.config.getTargetDir(), pathName);
-        const stats = await fs.stat(absolutePath);
-        if (stats.isDirectory()) {
-          currentPathSpec = pathName.endsWith('/')
-            ? `${pathName}**`
-            : `${pathName}/**`;
-          console.warn(
-            `Path ${pathName} resolved to directory, using glob: ${currentPathSpec}`,
-          );
+        if (isWithinRoot(absolutePath, this.config.getTargetDir())) {
+          const stats = await fs.stat(absolutePath);
+          if (stats.isDirectory()) {
+            currentPathSpec = pathName.endsWith('/')
+              ? `${pathName}**`
+              : `${pathName}/**`;
+            this.#debug(
+              `Path ${pathName} resolved to directory, using glob: ${currentPathSpec}`,
+            );
+          } else {
+            this.#debug(
+              `Path ${pathName} resolved to file: ${currentPathSpec}`,
+            );
+          }
+          resolvedSuccessfully = true;
         } else {
-          console.warn(`Path ${pathName} resolved to file: ${currentPathSpec}`);
+          this.#debug(
+            `Path ${pathName} is outside the project directory. Skipping.`,
+          );
         }
-        resolvedSuccessfully = true;
       } catch (error) {
         if (isNodeError(error) && error.code === 'ENOENT') {
           if (this.config.getEnableRecursiveFileSearch() && globTool) {
-            console.warn(
+            this.#debug(
               `Path ${pathName} not found directly, attempting glob search.`,
             );
             try {
@@ -410,17 +419,17 @@ class GeminiAgent implements Agent {
                     this.config.getTargetDir(),
                     firstMatchAbsolute,
                   );
-                  console.warn(
+                  this.#debug(
                     `Glob search for ${pathName} found ${firstMatchAbsolute}, using relative path: ${currentPathSpec}`,
                   );
                   resolvedSuccessfully = true;
                 } else {
-                  console.warn(
+                  this.#debug(
                     `Glob search for '**/*${pathName}*' did not return a usable path. Path ${pathName} will be skipped.`,
                   );
                 }
               } else {
-                console.warn(
+                this.#debug(
                   `Glob search for '**/*${pathName}*' found no files or an error. Path ${pathName} will be skipped.`,
                 );
               }
@@ -430,7 +439,7 @@ class GeminiAgent implements Agent {
               );
             }
           } else {
-            console.warn(
+            this.#debug(
               `Glob tool not found. Path ${pathName} will be skipped.`,
             );
           }
@@ -495,7 +504,7 @@ class GeminiAgent implements Agent {
     // Inform user about ignored paths
     if (ignoredPaths.length > 0) {
       const ignoreType = respectGitIgnore ? 'git-ignored' : 'custom-ignored';
-      console.warn(
+      this.#debug(
         `Ignored ${ignoredPaths.length} ${ignoreType} files: ${ignoredPaths.join(', ')}`,
       );
     }
@@ -570,6 +579,12 @@ class GeminiAgent implements Agent {
         },
       });
       throw error;
+    }
+  }
+
+  #debug(msg: string) {
+    if (this.config.getDebugMode()) {
+      console.warn(msg);
     }
   }
 }
