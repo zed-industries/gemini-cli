@@ -54,9 +54,7 @@ class GeminiAgent implements Agent {
     private client: acp.Client,
   ) {}
 
-  async initialize(
-    _params: acp.InitializeParams,
-  ): Promise<acp.InitializeResponse> {
+  async initialize(): Promise<acp.InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
       let success = false;
       try {
@@ -71,9 +69,7 @@ class GeminiAgent implements Agent {
     return { isAuthenticated: false };
   }
 
-  async authenticate(
-    _params: acp.AuthenticateParams,
-  ): Promise<acp.AuthenticateResponse> {
+  async authenticate(): Promise<void> {
     await clearCachedCredentialFile();
     await this.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
     this.settings.setValue(
@@ -81,24 +77,18 @@ class GeminiAgent implements Agent {
       'selectedAuthType',
       AuthType.LOGIN_WITH_GOOGLE,
     );
-
-    return null;
   }
 
-  async cancelSendMessage(): Promise<acp.CancelSendMessageResponse> {
+  async cancelSendMessage(): Promise<void> {
     if (!this.pendingSend) {
       throw new Error('Not currently generating');
     }
 
     this.pendingSend.abort();
     delete this.pendingSend;
-
-    return null;
   }
 
-  async sendUserMessage(
-    params: acp.SendUserMessageParams,
-  ): Promise<acp.SendUserMessageResponse> {
+  async sendUserMessage(params: acp.SendUserMessageParams): Promise<void> {
     this.pendingSend?.abort();
     const pendingSend = new AbortController();
     this.pendingSend = pendingSend;
@@ -184,8 +174,6 @@ class GeminiAgent implements Agent {
         nextMessage = { role: 'user', parts: toolResponseParts };
       }
     }
-
-    return null;
   }
 
   async #runTool(
