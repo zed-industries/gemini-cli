@@ -17,7 +17,6 @@ import {
 import {
   Config,
   ConfigParameters,
-  MCPServerConfig,
   ApprovalMode,
   Mode,
 } from '../config/config.js';

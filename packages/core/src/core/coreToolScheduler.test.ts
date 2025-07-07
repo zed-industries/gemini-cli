@@ -91,6 +91,8 @@ class MockModifiableTool
         title: 'Confirm Mock Tool',
         fileName: 'test.txt',
         fileDiff: 'diff',
+        originalContent: 'originalContent',
+        newContent: 'newContent',
         onConfirm: async () => {},
       };
     }
