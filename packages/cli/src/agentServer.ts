@@ -37,6 +37,7 @@ export async function runAgentServer(config: Config, settings: LoadedSettings) {
   // messages to stderr so that they don't interfere with ACP.
   console.log = console.error;
   console.info = console.error;
+  console.debug = console.error;
 
   acp.Connection.agentToClient(
     (client: acp.Client) => new GeminiAgent(config, settings, client),
