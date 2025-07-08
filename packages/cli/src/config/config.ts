@@ -134,6 +134,7 @@ async function parseArguments(): Promise<CliArgs> {
     .option('acp', {
       type: 'boolean',
       description: 'Starts the agent in ACP mode',
+    })
     .option('allowed-mcp-server-names', {
       type: 'string',
       description: 'Allowed MCP server names',
