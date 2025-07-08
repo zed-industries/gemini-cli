@@ -19,6 +19,7 @@ import {
   isNodeError,
   getErrorMessage,
   isWithinRoot,
+  getErrorStatus,
 } from '@google/gemini-cli-core';
 import * as acp from '@zed-industries/agentic-coding-protocol';
 import { Agent } from '@zed-industries/agentic-coding-protocol';
@@ -117,41 +118,52 @@ class GeminiAgent implements Agent {
 
       const functionCalls: FunctionCall[] = [];
 
-      const responseStream = await chat.sendMessageStream({
-        message: nextMessage?.parts ?? [],
-        config: {
-          abortSignal: pendingSend.signal,
-          tools: [
-            { functionDeclarations: toolRegistry.getFunctionDeclarations() },
-          ],
-        },
-      });
-      nextMessage = null;
+      try {
+        const responseStream = await chat.sendMessageStream({
+          message: nextMessage?.parts ?? [],
+          config: {
+            abortSignal: pendingSend.signal,
+            tools: [
+              { functionDeclarations: toolRegistry.getFunctionDeclarations() },
+            ],
+          },
+        });
+        nextMessage = null;
 
-      for await (const resp of responseStream) {
-        if (pendingSend.signal.aborted) {
-          throw new Error('Aborted');
-        }
+        for await (const resp of responseStream) {
+          if (pendingSend.signal.aborted) {
+            throw new Error('Aborted');
+          }
 
-        if (resp.candidates && resp.candidates.length > 0) {
-          const candidate = resp.candidates[0];
-          for (const part of candidate.content?.parts ?? []) {
-            if (!part.text) {
-              continue;
+          if (resp.candidates && resp.candidates.length > 0) {
+            const candidate = resp.candidates[0];
+            for (const part of candidate.content?.parts ?? []) {
+              if (!part.text) {
+                continue;
+              }
+
+              this.client.streamAssistantMessageChunk({
+                chunk: {
+                  type: part.thought ? 'thought' : 'text',
+                  chunk: part.text,
+                },
+              });
             }
+          }
 
-            this.client.streamAssistantMessageChunk({
-              chunk: {
-                type: part.thought ? 'thought' : 'text',
-                chunk: part.text,
-              },
-            });
+          if (resp.functionCalls) {
+            functionCalls.push(...resp.functionCalls);
           }
         }
-
-        if (resp.functionCalls) {
-          functionCalls.push(...resp.functionCalls);
+      } catch (error) {
+        if (getErrorStatus(error) === 429) {
+          throw new acp.RequestError(
+            429,
+            'Rate limit exceeded. Try again later.',
+          );
         }
+
+        throw error;
       }
 
       if (functionCalls.length > 0) {
