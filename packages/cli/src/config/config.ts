@@ -21,7 +21,7 @@ import {
 } from '@google/gemini-cli-core';
 import { Settings } from './settings.js';
 
-import { Extension } from './extension.js';
+import { Extension, filterActiveExtensions } from './extension.js';
 import { getCliVersion } from '../utils/version.js';
 import { loadSandboxConfig } from './sandboxConfig.js';
 
@@ -38,10 +38,12 @@ const logger = {
 interface CliArgs {
   model: string | undefined;
   sandbox: boolean | string | undefined;
-  'sandbox-image': string | undefined;
+  sandboxImage: string | undefined;
   debug: boolean | undefined;
   prompt: string | undefined;
+  allFiles: boolean | undefined;
   all_files: boolean | undefined;
+  showMemoryUsage: boolean | undefined;
   show_memory_usage: boolean | undefined;
   yolo: boolean | undefined;
   telemetry: boolean | undefined;
@@ -50,11 +52,13 @@ interface CliArgs {
   telemetryOtlpEndpoint: string | undefined;
   telemetryLogPrompts: boolean | undefined;
   acp: boolean | undefined;
-  'allowed-mcp-server-names': string | undefined;
+  allowedMcpServerNames: string | undefined;
+  extensions: string[] | undefined;
+  listExtensions: boolean | undefined;
 }
 
 async function parseArguments(): Promise<CliArgs> {
-  const argv = await yargs(hideBin(process.argv))
+  const yargsInstance = yargs(hideBin(process.argv))
     .scriptName('gemini')
     .usage(
       '$0 [options]',
@@ -86,10 +90,24 @@ async function parseArguments(): Promise<CliArgs> {
       description: 'Run in debug mode?',
       default: false,
     })
-    .option('all_files', {
-      alias: 'a',
+    .option('all-files', {
+      alias: ['a'],
       type: 'boolean',
       description: 'Include ALL files in context?',
+      default: false,
+    })
+    .option('all_files', {
+      type: 'boolean',
+      description: 'Include ALL files in context?',
+      default: false,
+    })
+    .deprecateOption(
+      'all_files',
+      'Use --all-files instead. We will be removing --all_files in the coming weeks.',
+    )
+    .option('show-memory-usage', {
+      type: 'boolean',
+      description: 'Show memory usage in status bar',
       default: false,
     })
     .option('show_memory_usage', {
@@ -97,6 +115,10 @@ async function parseArguments(): Promise<CliArgs> {
       description: 'Show memory usage in status bar',
       default: false,
     })
+    .deprecateOption(
+      'show_memory_usage',
+      'Use --show-memory-usage instead. We will be removing --show_memory_usage in the coming weeks.',
+    )
     .option('yolo', {
       alias: 'y',
       type: 'boolean',
@@ -139,13 +161,27 @@ async function parseArguments(): Promise<CliArgs> {
       type: 'string',
       description: 'Allowed MCP server names',
     })
+    .option('extensions', {
+      alias: 'e',
+      type: 'array',
+      string: true,
+      description:
+        'A list of extensions to use. If not provided, all extensions are used.',
+    })
+    .option('list-extensions', {
+      alias: 'l',
+      type: 'boolean',
+      description: 'List all available extensions and exit.',
+    })
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
     .alias('v', 'version')
     .help()
     .alias('h', 'help')
-    .strict().argv;
+    .strict();
 
-  return argv;
+  yargsInstance.wrap(yargsInstance.terminalWidth());
+
+  return yargsInstance.argv;
 }
 
 // This function is now a thin wrapper around the server's implementation.
@@ -178,7 +214,16 @@ export async function loadCliConfig(
   sessionId: string,
 ): Promise<Config> {
   const argv = await parseArguments();
-  const debugMode = argv.debug || false;
+  const debugMode =
+    argv.debug ||
+    [process.env.DEBUG, process.env.DEBUG_MODE].some(
+      (v) => v === 'true' || v === '1',
+    );
+
+  const activeExtensions = filterActiveExtensions(
+    extensions,
+    argv.extensions || [],
+  );
 
   // Set the context filename in the server's memoryTool module BEFORE loading memory
   // TODO(b/343434939): This is a bit of a hack. The contextFileName should ideally be passed
@@ -191,7 +236,9 @@ export async function loadCliConfig(
     setServerGeminiMdFilename(getCurrentGeminiMdFilename());
   }
 
-  const extensionContextFilePaths = extensions.flatMap((e) => e.contextFiles);
+  const extensionContextFilePaths = activeExtensions.flatMap(
+    (e) => e.contextFiles,
+  );
 
   const fileService = new FileDiscoveryService(process.cwd());
   // Call the (now wrapper) loadHierarchicalGeminiMemory which calls the server's version
@@ -202,12 +249,12 @@ export async function loadCliConfig(
     extensionContextFilePaths,
   );
 
-  let mcpServers = mergeMcpServers(settings, extensions);
-  const excludeTools = mergeExcludeTools(settings, extensions);
+  let mcpServers = mergeMcpServers(settings, activeExtensions);
+  const excludeTools = mergeExcludeTools(settings, activeExtensions);
 
-  if (argv['allowed-mcp-server-names']) {
+  if (argv.allowedMcpServerNames) {
     const allowedNames = new Set(
-      argv['allowed-mcp-server-names'].split(',').filter(Boolean),
+      argv.allowedMcpServerNames.split(',').filter(Boolean),
     );
     if (allowedNames.size > 0) {
       mcpServers = Object.fromEntries(
@@ -227,7 +274,7 @@ export async function loadCliConfig(
     targetDir: process.cwd(),
     debugMode,
     question: argv.prompt || '',
-    fullContext: argv.all_files || false,
+    fullContext: argv.allFiles || argv.all_files || false,
     coreTools: settings.coreTools || undefined,
     excludeTools,
     toolDiscoveryCommand: settings.toolDiscoveryCommand,
@@ -238,7 +285,10 @@ export async function loadCliConfig(
     geminiMdFileCount: fileCount,
     approvalMode: argv.yolo || false ? ApprovalMode.YOLO : ApprovalMode.DEFAULT,
     showMemoryUsage:
-      argv.show_memory_usage || settings.showMemoryUsage || false,
+      argv.showMemoryUsage ||
+      argv.show_memory_usage ||
+      settings.showMemoryUsage ||
+      false,
     accessibility: settings.accessibility,
     telemetry: {
       enabled: argv.telemetry ?? settings.telemetry?.enabled,
@@ -269,6 +319,11 @@ export async function loadCliConfig(
     model: argv.model!,
     extensionContextFilePaths,
     mode: argv.acp ? Mode.ACP : Mode.TUI,
+    listExtensions: argv.listExtensions || false,
+    activeExtensions: activeExtensions.map((e) => ({
+      name: e.config.name,
+      version: e.config.version,
+    })),
   });
 }
 
