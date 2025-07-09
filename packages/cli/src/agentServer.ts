@@ -104,17 +104,14 @@ class GeminiAgent implements Agent {
 
     const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
 
-    const parts = await this.#resolveUserMessage(
-      params.message,
-      pendingSend.signal,
-    );
+    const parts = await this.#resolveUserMessage(params, pendingSend.signal);
 
     let nextMessage: Content | null = { role: 'user', parts };
 
     while (nextMessage !== null) {
       if (pendingSend.signal.aborted) {
         chat.addHistory(nextMessage);
-        break;
+        return;
       }
 
       const functionCalls: FunctionCall[] = [];
@@ -133,7 +130,7 @@ class GeminiAgent implements Agent {
 
         for await (const resp of responseStream) {
           if (pendingSend.signal.aborted) {
-            throw new Error('Aborted');
+            return;
           }
 
           if (resp.candidates && resp.candidates.length > 0) {
@@ -144,10 +141,9 @@ class GeminiAgent implements Agent {
               }
 
               this.client.streamAssistantMessageChunk({
-                chunk: {
-                  type: part.thought ? 'thought' : 'text',
-                  chunk: part.text,
-                },
+                chunk: part.thought
+                  ? { thought: part.text }
+                  : { text: part.text },
               });
             }
           }
@@ -321,17 +317,15 @@ class GeminiAgent implements Agent {
   }
 
   async #resolveUserMessage(
-    message: acp.UserMessage,
+    message: acp.SendUserMessageParams,
     abortSignal: AbortSignal,
   ): Promise<Part[]> {
-    const atPathCommandParts = message.chunks.filter(
-      (part) => part.type === 'path',
-    );
+    const atPathCommandParts = message.chunks.filter((part) => 'path' in part);
 
     if (atPathCommandParts.length === 0) {
       return message.chunks.map((chunk) => {
-        if (chunk.type === 'text') {
-          return { text: chunk.chunk };
+        if ('text' in chunk) {
+          return { text: chunk.text };
         } else {
           throw new Error('Unexpected chunk type');
         }
@@ -462,8 +456,8 @@ class GeminiAgent implements Agent {
     let initialQueryText = '';
     for (let i = 0; i < message.chunks.length; i++) {
       const chunk = message.chunks[i];
-      if (chunk.type === 'text') {
-        initialQueryText += chunk.chunk;
+      if ('text' in chunk) {
+        initialQueryText += chunk.text;
       } else {
         // type === 'atPath'
         const resolvedSpec = atPathToResolvedSpecMap.get(chunk.path);
@@ -476,9 +470,8 @@ class GeminiAgent implements Agent {
           // Add space if previous part was text and didn't end with space, or if previous was @path
           const prevPart = message.chunks[i - 1];
           if (
-            prevPart.type === 'text' ||
-            (prevPart.type === 'path' &&
-              atPathToResolvedSpecMap.has(prevPart.path))
+            'text' in prevPart ||
+            ('path' in prevPart && atPathToResolvedSpecMap.has(prevPart.path))
           ) {
             initialQueryText += ' ';
           }
