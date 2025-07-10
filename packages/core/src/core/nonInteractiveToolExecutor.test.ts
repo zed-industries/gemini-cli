@@ -52,6 +52,7 @@ describe('executeToolCall', () => {
       isOutputMarkdown: false,
       canUpdateOutput: false,
       getDescription: vi.fn(),
+      toolLocations: vi.fn(() => []),
     };
 
     mockToolRegistry = {

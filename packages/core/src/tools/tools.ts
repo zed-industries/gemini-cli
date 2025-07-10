@@ -67,6 +67,13 @@ export interface Tool<
   getDescription(params: TParams): string;
 
   /**
+   * Determines what file system paths the tool will affect
+   * @param params Parameters for the tool execution
+   * @returns A list of such paths
+   */
+  toolLocations(params: TParams): ToolLocation[];
+
+  /**
    * Determines if the tool should prompt for confirmation before execution
    * @param params Parameters for the tool execution
    * @returns Whether execute should be confirmed.
@@ -163,6 +170,18 @@ export abstract class BaseTool<
     abortSignal: AbortSignal,
   ): Promise<ToolCallConfirmationDetails | false> {
     return Promise.resolve(false);
+  }
+
+  /**
+   * Determines what file system paths the tool will affect
+   * @param params Parameters for the tool execution
+   * @returns A list of such paths
+   */
+  toolLocations(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    params: TParams,
+  ): ToolLocation[] {
+    return [];
   }
 
   /**
@@ -263,4 +282,11 @@ export enum ToolConfirmationOutcome {
   ProceedAlwaysTool = 'proceed_always_tool',
   ModifyWithEditor = 'modify_with_editor',
   Cancel = 'cancel',
+}
+
+export interface ToolLocation {
+  // Absolute path to the file
+  path: string;
+  // Which line (if known)
+  line?: number;
 }

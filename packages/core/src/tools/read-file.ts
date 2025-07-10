@@ -7,7 +7,7 @@
 import path from 'path';
 import { SchemaValidator } from '../utils/schemaValidator.js';
 import { makeRelative, shortenPath } from '../utils/paths.js';
-import { BaseTool, ToolResult } from './tools.js';
+import { BaseTool, ToolLocation, ToolResult } from './tools.js';
 import { Type } from '@google/genai';
 import {
   isWithinRoot,
@@ -122,6 +122,10 @@ export class ReadFileTool extends BaseTool<ReadFileToolParams, ToolResult> {
     }
     const relativePath = makeRelative(params.absolute_path, this.rootDirectory);
     return shortenPath(relativePath);
+  }
+
+  toolLocations(params: ReadFileToolParams): ToolLocation[] {
+    return [{ path: params.absolute_path, line: params.offset }];
   }
 
   async execute(
