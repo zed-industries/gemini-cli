@@ -20,6 +20,7 @@ import {
   getErrorMessage,
   isWithinRoot,
   getErrorStatus,
+  ToolLocation,
 } from '@google/gemini-cli-core';
 import * as acp from '@zed-industries/agentic-coding-protocol';
 import { Agent } from '@zed-industries/agentic-coding-protocol';
@@ -251,6 +252,7 @@ class GeminiAgent implements Agent {
         icon: tool.acpIcon,
         content,
         confirmation: toAcpToolCallConfirmation(confirmationDetails),
+        locations: tool.toolLocations(args),
       });
 
       await confirmationDetails.onConfirm(toToolCallOutcome(result.outcome));
@@ -278,6 +280,7 @@ class GeminiAgent implements Agent {
       const result = await this.client.pushToolCall({
         icon: tool.acpIcon,
         label: tool.getDescription(args),
+        locations: tool.toolLocations(args),
       });
 
       toolCallId = result.id;
@@ -601,6 +604,15 @@ function toToolCallContent(toolResult: ToolResult): acp.ToolCallContent | null {
   } else {
     return null;
   }
+}
+
+function toAcpToolLocations(
+  toolLocations: ToolLocation[],
+): acp.ToolCallLocation[] {
+  return toolLocations.map((location) => ({
+    path: location.path,
+    line: location.line ?? null,
+  }));
 }
 
 function toAcpToolCallConfirmation(

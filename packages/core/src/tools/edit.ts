@@ -12,6 +12,7 @@ import {
   ToolCallConfirmationDetails,
   ToolConfirmationOutcome,
   ToolEditConfirmationDetails,
+  ToolLocation,
   ToolResult,
   ToolResultDisplay,
 } from './tools.js';
@@ -162,6 +163,15 @@ Expectation for required parameters:
     }
 
     return null;
+  }
+
+  /**
+   * Determines any file locations affected by the tool execution
+   * @param params Parameters for the tool execution
+   * @returns A list of such paths
+   */
+  toolLocations(params: EditToolParams): ToolLocation[] {
+    return [{ path: params.file_path }];
   }
 
   private _applyReplacement(
