@@ -20,7 +20,6 @@ import {
   getErrorMessage,
   isWithinRoot,
   getErrorStatus,
-  ToolLocation,
 } from '@google/gemini-cli-core';
 import * as acp from '@zed-industries/agentic-coding-protocol';
 import { Agent } from '@zed-industries/agentic-coding-protocol';
@@ -55,7 +54,14 @@ class GeminiAgent implements Agent {
     private config: Config,
     private settings: LoadedSettings,
     private client: acp.Client,
-  ) {}
+  ) {
+    config.setToolEnv({
+      readTextFile: async (path: string) =>
+        (await client.readTextFile({ path })).content,
+      writeTextFile: (path: string, content: string) =>
+        client.writeTextFile({ path, content }),
+    });
+  }
 
   async initialize(): Promise<acp.InitializeResponse> {
     if (this.settings.merged.selectedAuthType) {
@@ -604,15 +610,6 @@ function toToolCallContent(toolResult: ToolResult): acp.ToolCallContent | null {
   } else {
     return null;
   }
-}
-
-function toAcpToolLocations(
-  toolLocations: ToolLocation[],
-): acp.ToolCallLocation[] {
-  return toolLocations.map((location) => ({
-    path: location.path,
-    line: location.line ?? null,
-  }));
 }
 
 function toAcpToolCallConfirmation(

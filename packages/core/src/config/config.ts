@@ -44,6 +44,7 @@ import {
   DEFAULT_GEMINI_FLASH_MODEL,
 } from './models.js';
 import { ClearcutLogger } from '../telemetry/clearcut-logger/clearcut-logger.js';
+import { DefaultToolEnvironment, ToolEnvironment } from '../tools/tools.js';
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -189,6 +190,7 @@ export class Config {
   private readonly _activeExtensions: ActiveExtension[];
   flashFallbackHandler?: FlashFallbackHandler;
   private readonly mode: Mode;
+  private toolEnv: ToolEnvironment = DefaultToolEnvironment;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
@@ -483,6 +485,14 @@ export class Config {
       await this.gitService.initialize();
     }
     return this.gitService;
+  }
+
+  getToolEnv(): ToolEnvironment {
+    return this.toolEnv;
+  }
+
+  setToolEnv(env: ToolEnvironment) {
+    this.toolEnv = env;
   }
 
   async refreshMemory(): Promise<{ memoryContent: string; fileCount: number }> {

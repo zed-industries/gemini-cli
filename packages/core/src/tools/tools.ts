@@ -6,6 +6,7 @@
 
 import { FunctionDeclaration, PartListUnion, Schema } from '@google/genai';
 import * as acp from '@zed-industries/agentic-coding-protocol';
+import * as fs from 'fs';
 
 /**
  * Interface representing the base Tool functionality
@@ -81,6 +82,7 @@ export interface Tool<
   shouldConfirmExecute(
     params: TParams,
     abortSignal: AbortSignal,
+    env?: ToolEnvironment,
   ): Promise<ToolCallConfirmationDetails | false>;
 
   /**
@@ -290,3 +292,14 @@ export interface ToolLocation {
   // Which line (if known)
   line?: number;
 }
+
+export interface ToolEnvironment {
+  readTextFile(path: string): Promise<string>;
+  writeTextFile(path: string, content: string): Promise<void>;
+}
+
+export const DefaultToolEnvironment = {
+  readTextFile: (path: string) => fs.promises.readFile(path, 'utf8'),
+  writeTextFile: (path: string, content: string) =>
+    fs.promises.writeFile(path, content),
+};

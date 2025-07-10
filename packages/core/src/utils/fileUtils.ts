@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { PartUnion } from '@google/genai';
 import mime from 'mime-types';
+import { ToolEnvironment } from '../tools/tools.js';
 
 // Constants for text file processing
 const DEFAULT_MAX_LINES_TEXT_FILE = 2000;
@@ -191,6 +192,7 @@ export interface ProcessedFileReadResult {
  * @returns ProcessedFileReadResult object.
  */
 export async function processSingleFileContent(
+  toolEnv: ToolEnvironment,
   filePath: string,
   rootDirectory: string,
   offset?: number,
@@ -247,14 +249,14 @@ export async function processSingleFileContent(
             returnDisplay: `Skipped large SVG file (>1MB): ${relativePathForDisplay}`,
           };
         }
-        const content = await fs.promises.readFile(filePath, 'utf8');
+        const content = await toolEnv.readTextFile(filePath);
         return {
           llmContent: content,
           returnDisplay: `Read SVG as text: ${relativePathForDisplay}`,
         };
       }
       case 'text': {
-        const content = await fs.promises.readFile(filePath, 'utf8');
+        const content = await toolEnv.readTextFile(filePath);
         const lines = content.split('\n');
         const originalLineCount = lines.length;
 
