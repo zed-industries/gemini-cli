@@ -29,7 +29,7 @@ class MockTool extends BaseTool<Record<string, unknown>, ToolResult> {
   executeFn = vi.fn();
 
   constructor(name = 'mockTool') {
-    super(name, name, 'A mock tool', {});
+    super(name, name, 'A mock tool', 'hammer', {});
   }
 
   async shouldConfirmExecute(
@@ -91,6 +91,8 @@ class MockModifiableTool
         title: 'Confirm Mock Tool',
         fileName: 'test.txt',
         fileDiff: 'diff',
+        originalContent: 'originalContent',
+        newContent: 'newContent',
         onConfirm: async () => {},
       };
     }

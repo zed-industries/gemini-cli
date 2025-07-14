@@ -15,12 +15,17 @@ import {
   Mocked,
 } from 'vitest';
 import {
+  Config,
+  ConfigParameters,
+  ApprovalMode,
+  Mode,
+} from '../config/config.js';
+import {
   ToolRegistry,
   DiscoveredTool,
   sanitizeParameters,
 } from './tool-registry.js';
 import { DiscoveredMCPTool } from './mcp-tool.js';
-import { Config, ConfigParameters, ApprovalMode } from '../config/config.js';
 import { BaseTool, ToolResult } from './tools.js';
 import {
   FunctionDeclaration,
@@ -105,7 +110,7 @@ const createMockCallableTool = (
 
 class MockTool extends BaseTool<{ param: string }, ToolResult> {
   constructor(name = 'mock-tool', description = 'A mock tool') {
-    super(name, name, description, {
+    super(name, name, description, 'hammer', {
       type: Type.OBJECT,
       properties: {
         param: { type: Type.STRING },
@@ -132,6 +137,7 @@ const baseConfigParams: ConfigParameters = {
   geminiMdFileCount: 0,
   approvalMode: ApprovalMode.DEFAULT,
   sessionId: 'test-session-id',
+  mode: Mode.TUI,
 };
 
 describe('ToolRegistry', () => {

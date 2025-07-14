@@ -15,6 +15,7 @@ import {
   AccessibilitySettings,
   SandboxConfig,
   GeminiClient,
+  Mode,
 } from '@google/gemini-cli-core';
 import { LoadedSettings, SettingsFile, Settings } from '../config/settings.js';
 import process from 'node:process';
@@ -237,6 +238,7 @@ describe('App UI', () => {
       sessionId: 'test-session-id',
       cwd: '/tmp',
       model: 'model',
+      mode: Mode.TUI,
     }) as unknown as MockServerConfig;
     mockVersion = '0.0.0-test';
 

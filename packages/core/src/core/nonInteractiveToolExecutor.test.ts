@@ -32,6 +32,7 @@ describe('executeToolCall', () => {
       name: 'testTool',
       displayName: 'Test Tool',
       description: 'A tool for testing',
+      acpIcon: 'hammer',
       schema: {
         name: 'testTool',
         description: 'A tool for testing',
@@ -51,6 +52,7 @@ describe('executeToolCall', () => {
       isOutputMarkdown: false,
       canUpdateOutput: false,
       getDescription: vi.fn(),
+      toolLocations: vi.fn(() => []),
     };
 
     mockToolRegistry = {

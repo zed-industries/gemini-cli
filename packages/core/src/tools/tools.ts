@@ -5,6 +5,7 @@
  */
 
 import { FunctionDeclaration, PartListUnion, Schema } from '@google/genai';
+import * as acp from '@zed-industries/agentic-coding-protocol';
 
 /**
  * Interface representing the base Tool functionality
@@ -27,6 +28,11 @@ export interface Tool<
    * Description of what the tool does
    */
   description: string;
+
+  /**
+   * The icon to display when interacting via ACP
+   */
+  acpIcon: acp.Icon;
 
   /**
    * Function declaration schema from @google/genai
@@ -59,6 +65,13 @@ export interface Tool<
    * Optional for backward compatibility
    */
   getDescription(params: TParams): string;
+
+  /**
+   * Determines what file system paths the tool will affect
+   * @param params Parameters for the tool execution
+   * @returns A list of such paths
+   */
+  toolLocations(params: TParams): ToolLocation[];
 
   /**
    * Determines if the tool should prompt for confirmation before execution
@@ -103,6 +116,7 @@ export abstract class BaseTool<
     readonly name: string,
     readonly displayName: string,
     readonly description: string,
+    readonly acpIcon: acp.Icon,
     readonly parameterSchema: Schema,
     readonly isOutputMarkdown: boolean = true,
     readonly canUpdateOutput: boolean = false,
@@ -159,6 +173,18 @@ export abstract class BaseTool<
   }
 
   /**
+   * Determines what file system paths the tool will affect
+   * @param params Parameters for the tool execution
+   * @returns A list of such paths
+   */
+  toolLocations(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    params: TParams,
+  ): ToolLocation[] {
+    return [];
+  }
+
+  /**
    * Abstract method to execute the tool with the given parameters
    * Must be implemented by derived classes
    * @param params Parameters for the tool execution
@@ -199,6 +225,8 @@ export type ToolResultDisplay = string | FileDiff;
 export interface FileDiff {
   fileDiff: string;
   fileName: string;
+  originalContent: string | null;
+  newContent: string;
 }
 
 export interface ToolEditConfirmationDetails {
@@ -210,6 +238,8 @@ export interface ToolEditConfirmationDetails {
   ) => Promise<void>;
   fileName: string;
   fileDiff: string;
+  originalContent: string | null;
+  newContent: string;
   isModifying?: boolean;
 }
 
@@ -257,4 +287,11 @@ export enum ToolConfirmationOutcome {
   ProceedAlwaysTool = 'proceed_always_tool',
   ModifyWithEditor = 'modify_with_editor',
   Cancel = 'cancel',
+}
+
+export interface ToolLocation {
+  // Absolute path to the file
+  path: string;
+  // Which line (if known)
+  line?: number;
 }

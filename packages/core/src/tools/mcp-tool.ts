@@ -32,6 +32,7 @@ export class DiscoveredMCPTool extends BaseTool<ToolParams, ToolResult> {
       name,
       `${serverToolName} (${serverName} MCP Server)`,
       description,
+      'hammer',
       parameterSchema,
       true, // isOutputMarkdown
       false, // canUpdateOutput

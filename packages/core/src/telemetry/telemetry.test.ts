@@ -10,7 +10,7 @@ import {
   shutdownTelemetry,
   isTelemetrySdkInitialized,
 } from './sdk.js';
-import { Config } from '../config/config.js';
+import { Config, Mode } from '../config/config.js';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 
 vi.mock('@opentelemetry/sdk-node');
@@ -29,12 +29,14 @@ describe('telemetry', () => {
       targetDir: '/test/dir',
       debugMode: false,
       cwd: '/test/dir',
+      mode: Mode.TUI,
     });
     vi.spyOn(mockConfig, 'getTelemetryEnabled').mockReturnValue(true);
     vi.spyOn(mockConfig, 'getTelemetryOtlpEndpoint').mockReturnValue(
       'http://localhost:4317',
     );
     vi.spyOn(mockConfig, 'getSessionId').mockReturnValue('test-session-id');
+
     mockNodeSdk = {
       start: vi.fn(),
       shutdown: vi.fn().mockResolvedValue(undefined),

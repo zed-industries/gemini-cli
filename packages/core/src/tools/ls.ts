@@ -80,6 +80,7 @@ export class LSTool extends BaseTool<LSToolParams, ToolResult> {
       LSTool.Name,
       'ReadFolder',
       'Lists the names of files and subdirectories directly within a specified directory path. Can optionally ignore entries matching provided glob patterns.',
+      'folder',
       {
         properties: {
           path: {

@@ -52,6 +52,11 @@ export enum ApprovalMode {
   YOLO = 'yolo',
 }
 
+export enum Mode {
+  TUI = 'tui',
+  ACP = 'acp',
+}
+
 export interface AccessibilitySettings {
   disableLoadingPhrases?: boolean;
 }
@@ -141,6 +146,7 @@ export interface ConfigParameters {
   model: string;
   extensionContextFilePaths?: string[];
   maxSessionTurns?: number;
+  mode?: Mode;
   listExtensions?: boolean;
   activeExtensions?: ActiveExtension[];
   noBrowser?: boolean;
@@ -191,6 +197,7 @@ export class Config {
   private readonly _activeExtensions: ActiveExtension[];
   flashFallbackHandler?: FlashFallbackHandler;
   private quotaErrorOccurred: boolean = false;
+  private readonly mode: Mode;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
@@ -233,6 +240,7 @@ export class Config {
     this.model = params.model;
     this.extensionContextFilePaths = params.extensionContextFilePaths ?? [];
     this.maxSessionTurns = params.maxSessionTurns ?? -1;
+    this.mode = params.mode ?? Mode.TUI;
     this.listExtensions = params.listExtensions ?? false;
     this._activeExtensions = params.activeExtensions ?? [];
     this.noBrowser = params.noBrowser ?? false;
@@ -483,6 +491,10 @@ export class Config {
 
   getExtensionContextFilePaths(): string[] {
     return this.extensionContextFilePaths;
+  }
+
+  getMode(): Mode {
+    return this.mode;
   }
 
   getListExtensions(): boolean {

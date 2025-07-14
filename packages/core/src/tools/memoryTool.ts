@@ -105,6 +105,7 @@ export class MemoryTool extends BaseTool<SaveMemoryParams, ToolResult> {
       MemoryTool.Name,
       'Save Memory',
       memoryToolDescription,
+      'lightBulb',
       memoryToolSchemaData.parameters as Record<string, unknown>,
     );
   }

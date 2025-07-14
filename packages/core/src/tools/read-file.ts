@@ -7,7 +7,7 @@
 import path from 'path';
 import { SchemaValidator } from '../utils/schemaValidator.js';
 import { makeRelative, shortenPath } from '../utils/paths.js';
-import { BaseTool, ToolResult } from './tools.js';
+import { BaseTool, ToolLocation, ToolResult } from './tools.js';
 import { Type } from '@google/genai';
 import {
   isWithinRoot,
@@ -54,6 +54,7 @@ export class ReadFileTool extends BaseTool<ReadFileToolParams, ToolResult> {
       ReadFileTool.Name,
       'ReadFile',
       'Reads and returns the content of a specified file from the local filesystem. Handles text, images (PNG, JPG, GIF, WEBP, SVG, BMP), and PDF files. For text files, it can read specific line ranges.',
+      'fileSearch',
       {
         properties: {
           absolute_path: {
@@ -117,6 +118,10 @@ export class ReadFileTool extends BaseTool<ReadFileToolParams, ToolResult> {
     }
     const relativePath = makeRelative(params.absolute_path, this.rootDirectory);
     return shortenPath(relativePath);
+  }
+
+  toolLocations(params: ReadFileToolParams): ToolLocation[] {
+    return [{ path: params.absolute_path, line: params.offset }];
   }
 
   async execute(
