@@ -26,6 +26,7 @@ import {
   detectFileType,
   processSingleFileContent,
 } from './fileUtils.js';
+import { DefaultToolEnvironment } from '../tools/tools.js';
 
 vi.mock('mime-types', () => ({
   default: { lookup: vi.fn() },
@@ -36,6 +37,7 @@ const mockMimeLookup = mime.lookup as Mock;
 
 describe('fileUtils', () => {
   let tempRootDir: string;
+  const toolEnv = DefaultToolEnvironment;
   const originalProcessCwd = process.cwd;
 
   let testTextFilePath: string;
@@ -274,6 +276,7 @@ describe('fileUtils', () => {
       const content = 'Line 1\\nLine 2\\nLine 3';
       actualNodeFs.writeFileSync(testTextFilePath, content);
       const result = await processSingleFileContent(
+        toolEnv,
         testTextFilePath,
         tempRootDir,
       );
@@ -284,6 +287,7 @@ describe('fileUtils', () => {
 
     it('should handle file not found', async () => {
       const result = await processSingleFileContent(
+        toolEnv,
         nonExistentFilePath,
         tempRootDir,
       );
@@ -297,6 +301,7 @@ describe('fileUtils', () => {
       vi.spyOn(fsPromises, 'readFile').mockRejectedValueOnce(readError);
 
       const result = await processSingleFileContent(
+        toolEnv,
         testTextFilePath,
         tempRootDir,
       );
@@ -311,6 +316,7 @@ describe('fileUtils', () => {
       vi.spyOn(fsPromises, 'readFile').mockRejectedValueOnce(readError);
 
       const result = await processSingleFileContent(
+        toolEnv,
         testImageFilePath,
         tempRootDir,
       );
@@ -323,6 +329,7 @@ describe('fileUtils', () => {
       actualNodeFs.writeFileSync(testImageFilePath, fakePngData);
       mockMimeLookup.mockReturnValue('image/png');
       const result = await processSingleFileContent(
+        toolEnv,
         testImageFilePath,
         tempRootDir,
       );
@@ -344,6 +351,7 @@ describe('fileUtils', () => {
       actualNodeFs.writeFileSync(testPdfFilePath, fakePdfData);
       mockMimeLookup.mockReturnValue('application/pdf');
       const result = await processSingleFileContent(
+        toolEnv,
         testPdfFilePath,
         tempRootDir,
       );
@@ -372,6 +380,7 @@ describe('fileUtils', () => {
       mockMimeLookup.mockReturnValue('image/svg+xml');
 
       const result = await processSingleFileContent(
+        toolEnv,
         testSvgFilePath,
         tempRootDir,
       );
@@ -389,6 +398,7 @@ describe('fileUtils', () => {
       // isBinaryFile will operate on the real file.
 
       const result = await processSingleFileContent(
+        toolEnv,
         testBinaryFilePath,
         tempRootDir,
       );
@@ -399,7 +409,11 @@ describe('fileUtils', () => {
     });
 
     it('should handle path being a directory', async () => {
-      const result = await processSingleFileContent(directoryPath, tempRootDir);
+      const result = await processSingleFileContent(
+        toolEnv,
+        directoryPath,
+        tempRootDir,
+      );
       expect(result.error).toContain('Path is a directory');
       expect(result.returnDisplay).toContain('Path is a directory');
     });
@@ -409,6 +423,7 @@ describe('fileUtils', () => {
       actualNodeFs.writeFileSync(testTextFilePath, lines.join('\n'));
 
       const result = await processSingleFileContent(
+        toolEnv,
         testTextFilePath,
         tempRootDir,
         5,
@@ -431,6 +446,7 @@ describe('fileUtils', () => {
       actualNodeFs.writeFileSync(testTextFilePath, lines.join('\n'));
 
       const result = await processSingleFileContent(
+        toolEnv,
         testTextFilePath,
         tempRootDir,
         0,
@@ -453,6 +469,7 @@ describe('fileUtils', () => {
       );
 
       const result = await processSingleFileContent(
+        toolEnv,
         testTextFilePath,
         tempRootDir,
       );
@@ -475,6 +492,7 @@ describe('fileUtils', () => {
       actualNodeFs.writeFileSync(testTextFilePath, buffer);
 
       const result = await processSingleFileContent(
+        toolEnv,
         testTextFilePath,
         tempRootDir,
       );

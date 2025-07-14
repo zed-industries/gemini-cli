@@ -205,6 +205,7 @@ Expectation for required parameters:
     abortSignal: AbortSignal,
   ): Promise<CalculatedEdit> {
     const expectedReplacements = params.expected_replacements ?? 1;
+    const toolEnv = this.config.getToolEnv();
     let currentContent: string | null = null;
     let fileExists = false;
     let isNewFile = false;
@@ -214,7 +215,7 @@ Expectation for required parameters:
     let error: { display: string; raw: string } | undefined = undefined;
 
     try {
-      currentContent = fs.readFileSync(params.file_path, 'utf8');
+      currentContent = await toolEnv.readTextFile(params.file_path);
       // Normalize line endings to LF for consistent processing.
       currentContent = currentContent.replace(/\r\n/g, '\n');
       fileExists = true;
@@ -409,7 +410,9 @@ Expectation for required parameters:
 
     try {
       this.ensureParentDirectoriesExist(params.file_path);
-      fs.writeFileSync(params.file_path, editData.newContent, 'utf8');
+      await this.config
+        .getToolEnv()
+        .writeTextFile(params.file_path, editData.newContent);
 
       let displayResult: ToolResultDisplay;
       if (editData.isNewFile) {

@@ -12,6 +12,7 @@ import os from 'os';
 import fs from 'fs'; // For actual fs operations in setup
 import { Config } from '../config/config.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
+import { DefaultToolEnvironment } from './tools.js';
 
 // Mock fileUtils.processSingleFileContent
 vi.mock('../utils/fileUtils', async () => {
@@ -42,6 +43,7 @@ describe('ReadFileTool', () => {
     const fileService = new FileDiscoveryService(tempRootDir);
     const mockConfigInstance = {
       getFileService: () => fileService,
+      getToolEnv: () => DefaultToolEnvironment,
     } as unknown as Config;
     tool = new ReadFileTool(tempRootDir, mockConfigInstance);
     mockProcessSingleFileContent.mockReset();
@@ -163,6 +165,7 @@ describe('ReadFileTool', () => {
 
       const result = await tool.execute(params, abortSignal);
       expect(mockProcessSingleFileContent).toHaveBeenCalledWith(
+        DefaultToolEnvironment,
         filePath,
         tempRootDir,
         undefined,
@@ -183,6 +186,7 @@ describe('ReadFileTool', () => {
 
       const result = await tool.execute(params, abortSignal);
       expect(mockProcessSingleFileContent).toHaveBeenCalledWith(
+        DefaultToolEnvironment,
         filePath,
         tempRootDir,
         undefined,
@@ -207,6 +211,7 @@ describe('ReadFileTool', () => {
 
       const result = await tool.execute(params, abortSignal);
       expect(mockProcessSingleFileContent).toHaveBeenCalledWith(
+        DefaultToolEnvironment,
         filePath,
         tempRootDir,
         undefined,
@@ -232,6 +237,7 @@ describe('ReadFileTool', () => {
 
       await tool.execute(params, abortSignal);
       expect(mockProcessSingleFileContent).toHaveBeenCalledWith(
+        DefaultToolEnvironment,
         filePath,
         tempRootDir,
         10,

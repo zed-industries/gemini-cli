@@ -13,6 +13,7 @@ import path from 'path';
 import fs from 'fs'; // Actual fs for setup
 import os from 'os';
 import { Config } from '../config/config.js';
+import { DefaultToolEnvironment } from './tools.js';
 
 vi.mock('mime-types', () => {
   const lookup = (filename: string) => {
@@ -59,6 +60,7 @@ describe('ReadManyFilesTool', () => {
     const mockConfig = {
       getFileService: () => fileService,
       getFileFilteringRespectGitIgnore: () => true,
+      getToolEnv: () => DefaultToolEnvironment,
     } as Partial<Config> as Config;
 
     tool = new ReadManyFilesTool(tempRootDir, mockConfig);

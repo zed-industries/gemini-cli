@@ -26,7 +26,7 @@ vi.mock('../utils/editor.js', () => ({
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { EditTool, EditToolParams } from './edit.js';
-import { FileDiff } from './tools.js';
+import { DefaultToolEnvironment, FileDiff } from './tools.js';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -73,6 +73,7 @@ describe('EditTool', () => {
       getGeminiMdFileCount: () => 0,
       setGeminiMdFileCount: vi.fn(),
       getToolRegistry: () => ({}) as any, // Minimal mock for ToolRegistry
+      getToolEnv: () => DefaultToolEnvironment,
     } as unknown as Config;
 
     // Reset mocks before each test

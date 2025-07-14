@@ -378,6 +378,7 @@ Use this tool when the user's query implies needing the content of several files
 
       // Use processSingleFileContent for all file types now
       const fileReadResult = await processSingleFileContent(
+        this.config.getToolEnv(),
         filePath,
         toolBaseDir,
       );

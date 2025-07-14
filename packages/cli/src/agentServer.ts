@@ -53,7 +53,14 @@ class GeminiAgent implements Agent {
     private config: Config,
     private settings: LoadedSettings,
     private client: acp.Client,
-  ) {}
+  ) {
+    config.setToolEnv({
+      readTextFile: async (path: string) =>
+        (await client.readTextFile({ path })).content,
+      writeTextFile: (path: string, content: string) =>
+        client.writeTextFile({ path, content }),
+    });
+  }
 
   async initialize(_: acp.InitializeParams): Promise<acp.InitializeResponse> {
     let isAuthenticated = false;
