@@ -4,461 +4,274 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* ACP defines a schema for a simple (experimental) JSON-RPC protocol that allows GUI applications to interact with agents. */
-
-import { Icon } from '@google/gemini-cli-core';
-import { WritableStream, ReadableStream } from 'node:stream/web';
-
-export class ClientConnection implements Client {
-  #connection: Connection<Agent>;
-
-  constructor(
-    agent: (client: Client) => Agent,
-    input: WritableStream<Uint8Array>,
-    output: ReadableStream<Uint8Array>,
-  ) {
-    this.#connection = new Connection(agent(this), input, output);
-  }
-
-  /**
-   * Streams part of an assistant response to the client
-   */
-  async streamAssistantMessageChunk(
-    params: StreamAssistantMessageChunkParams,
-  ): Promise<void> {
-    await this.#connection.sendRequest('streamAssistantMessageChunk', params);
-  }
-
-  /**
-   * Request confirmation before running a tool
-   *
-   * When allowed, the client returns a [`ToolCallId`] which can be used
-   * to update the tool call's `status` and `content` as it runs.
-   */
-  requestToolCallConfirmation(
-    params: RequestToolCallConfirmationParams,
-  ): Promise<RequestToolCallConfirmationResponse> {
-    return this.#connection.sendRequest('requestToolCallConfirmation', params);
-  }
-
-  /**
-   * pushToolCall allows the agent to start a tool call
-   * when it does not need to request permission to do so.
-   *
-   * The returned id can be used to update the UI for the tool
-   * call as needed.
-   */
-  pushToolCall(params: PushToolCallParams): Promise<PushToolCallResponse> {
-    return this.#connection.sendRequest('pushToolCall', params);
-  }
-
-  /**
-   * updateToolCall allows the agent to update the content and status of the tool call.
-   *
-   * The new content replaces what is currently displayed in the UI.
-   *
-   * The [`ToolCallId`] is included in the response of
-   * `pushToolCall` or `requestToolCallConfirmation` respectively.
-   */
-  async updateToolCall(params: UpdateToolCallParams): Promise<void> {
-    await this.#connection.sendRequest('updateToolCall', params);
-  }
-}
-
-type AnyMessage = AnyRequest | AnyResponse;
-
-type AnyRequest = {
-  id: number;
-  method: string;
-  params?: unknown;
-};
-
-type AnyResponse = { jsonrpc: '2.0'; id: number } & Result<unknown>;
-
-type Result<T> =
-  | {
-      result: T;
-    }
-  | {
-      error: ErrorResponse;
-    };
-
-type ErrorResponse = {
-  code: number;
-  message: string;
-  data?: { details?: string };
-};
-
-type PendingResponse = {
-  resolve: (response: unknown) => void;
-  reject: (error: ErrorResponse) => void;
-};
-
-class Connection<D> {
-  #pendingResponses: Map<number, PendingResponse> = new Map();
-  #nextRequestId: number = 0;
-  #delegate: D;
-  #peerInput: WritableStream<Uint8Array>;
-  #writeQueue: Promise<void> = Promise.resolve();
-  #textEncoder: TextEncoder;
-
-  constructor(
-    delegate: D,
-    peerInput: WritableStream<Uint8Array>,
-    peerOutput: ReadableStream<Uint8Array>,
-  ) {
-    this.#peerInput = peerInput;
-    this.#textEncoder = new TextEncoder();
-
-    this.#delegate = delegate;
-    this.#receive(peerOutput);
-  }
-
-  async #receive(output: ReadableStream<Uint8Array>) {
-    let content = '';
-    const decoder = new TextDecoder();
-    for await (const chunk of output) {
-      content += decoder.decode(chunk, { stream: true });
-      const lines = content.split('\n');
-      content = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-
-        if (trimmedLine) {
-          const message = JSON.parse(trimmedLine);
-          this.#processMessage(message);
-        }
-      }
-    }
-  }
-
-  async #processMessage(message: AnyMessage) {
-    if ('method' in message) {
-      const response = await this.#tryCallDelegateMethod(
-        message.method,
-        message.params,
-      );
-
-      await this.#sendMessage({
-        jsonrpc: '2.0',
-        id: message.id,
-        ...response,
-      });
-    } else {
-      this.#handleResponse(message);
-    }
-  }
-
-  async #tryCallDelegateMethod(
-    method: string,
-    params?: unknown,
-  ): Promise<Result<unknown>> {
-    const methodName = method as keyof D;
-    if (typeof this.#delegate[methodName] !== 'function') {
-      return RequestError.methodNotFound(method).toResult();
-    }
-
-    try {
-      const result = await this.#delegate[methodName](params);
-      return { result: result ?? null };
-    } catch (error: unknown) {
-      if (error instanceof RequestError) {
-        return error.toResult();
-      }
-
-      let details;
-
-      if (error instanceof Error) {
-        details = error.message;
-      } else if (
-        typeof error === 'object' &&
-        error != null &&
-        'message' in error &&
-        typeof error.message === 'string'
-      ) {
-        details = error.message;
-      }
-
-      return RequestError.internalError(details).toResult();
-    }
-  }
-
-  #handleResponse(response: AnyResponse) {
-    const pendingResponse = this.#pendingResponses.get(response.id);
-    if (pendingResponse) {
-      if ('result' in response) {
-        pendingResponse.resolve(response.result);
-      } else if ('error' in response) {
-        pendingResponse.reject(response.error);
-      }
-      this.#pendingResponses.delete(response.id);
-    }
-  }
-
-  async sendRequest<Req, Resp>(method: string, params?: Req): Promise<Resp> {
-    const id = this.#nextRequestId++;
-    const responsePromise = new Promise((resolve, reject) => {
-      this.#pendingResponses.set(id, { resolve, reject });
-    });
-    await this.#sendMessage({ jsonrpc: '2.0', id, method, params });
-    return responsePromise as Promise<Resp>;
-  }
-
-  async #sendMessage(json: AnyMessage) {
-    const content = JSON.stringify(json) + '\n';
-    this.#writeQueue = this.#writeQueue
-      .then(async () => {
-        const writer = this.#peerInput.getWriter();
-        try {
-          await writer.write(this.#textEncoder.encode(content));
-        } finally {
-          writer.releaseLock();
-        }
-      })
-      .catch((error) => {
-        // Continue processing writes on error
-        console.error('ACP write error:', error);
-      });
-    return this.#writeQueue;
-  }
-}
-
-export class RequestError extends Error {
-  data?: { details?: string };
-
-  constructor(
-    public code: number,
-    message: string,
-    details?: string,
-  ) {
-    super(message);
-    this.name = 'RequestError';
-    if (details) {
-      this.data = { details };
-    }
-  }
-
-  static parseError(details?: string): RequestError {
-    return new RequestError(-32700, 'Parse error', details);
-  }
-
-  static invalidRequest(details?: string): RequestError {
-    return new RequestError(-32600, 'Invalid request', details);
-  }
-
-  static methodNotFound(details?: string): RequestError {
-    return new RequestError(-32601, 'Method not found', details);
-  }
-
-  static invalidParams(details?: string): RequestError {
-    return new RequestError(-32602, 'Invalid params', details);
-  }
-
-  static internalError(details?: string): RequestError {
-    return new RequestError(-32603, 'Internal error', details);
-  }
-
-  toResult<T>(): Result<T> {
-    return {
-      error: {
-        code: this.code,
-        message: this.message,
-        data: this.data,
-      },
-    };
-  }
-}
-
-// Protocol types
-
-export const LATEST_PROTOCOL_VERSION = '0.0.9';
-
-export type AssistantMessageChunk =
-  | {
-      text: string;
-    }
-  | {
-      thought: string;
-    };
-
-export type ToolCallConfirmation =
-  | {
-      description?: string | null;
-      type: 'edit';
-    }
-  | {
-      description?: string | null;
-      type: 'execute';
-      command: string;
-      rootCommand: string;
-    }
-  | {
-      description?: string | null;
-      type: 'mcp';
-      serverName: string;
-      toolDisplayName: string;
-      toolName: string;
-    }
-  | {
-      description?: string | null;
-      type: 'fetch';
-      urls: string[];
-    }
-  | {
-      description: string;
-      type: 'other';
-    };
-
-export type ToolCallContent =
-  | {
-      type: 'markdown';
-      markdown: string;
-    }
-  | {
-      type: 'diff';
-      newText: string;
-      oldText: string | null;
-      path: string;
-    };
-
-export type ToolCallStatus = 'running' | 'finished' | 'error';
-
-export type ToolCallId = number;
-
-export type ToolCallConfirmationOutcome =
-  | 'allow'
-  | 'alwaysAllow'
-  | 'alwaysAllowMcpServer'
-  | 'alwaysAllowTool'
-  | 'reject'
-  | 'cancel';
-
-/**
- * A part in a user message
- */
-export type UserMessageChunk =
-  | {
-      text: string;
-    }
-  | {
-      path: string;
-    };
-
-export interface StreamAssistantMessageChunkParams {
-  chunk: AssistantMessageChunk;
-}
-
-export interface RequestToolCallConfirmationParams {
-  confirmation: ToolCallConfirmation;
-  content?: ToolCallContent | null;
-  icon: Icon;
-  label: string;
-  locations?: ToolCallLocation[];
-}
-
-export interface ToolCallLocation {
-  line?: number | null;
-  path: string;
-}
-
-export interface PushToolCallParams {
-  content?: ToolCallContent | null;
-  icon: Icon;
-  label: string;
-  locations?: ToolCallLocation[];
-}
-
-export interface UpdateToolCallParams {
-  content: ToolCallContent | null;
-  status: ToolCallStatus;
-  toolCallId: ToolCallId;
-}
-
-export interface RequestToolCallConfirmationResponse {
-  id: ToolCallId;
-  outcome: ToolCallConfirmationOutcome;
-}
-
-export interface PushToolCallResponse {
-  id: ToolCallId;
-}
-
-export interface InitializeParams {
-  /**
-   * The version of the protocol that the client supports.
-   * This should be the latest version supported by the client.
-   */
-  protocolVersion: string;
-}
-
-export interface SendUserMessageParams {
-  chunks: UserMessageChunk[];
-}
-
-export interface InitializeResponse {
-  /**
-   * Indicates whether the agent is authenticated and
-   * ready to handle requests.
-   */
-  isAuthenticated: boolean;
-  /**
-   * The version of the protocol that the agent supports.
-   * If the agent supports the requested version, it should respond with the same version.
-   * Otherwise, the agent should respond with the latest version it supports.
-   */
-  protocolVersion: string;
-}
-
-export interface Error {
-  code: number;
-  data?: unknown;
-  message: string;
-}
-
-export interface Client {
-  streamAssistantMessageChunk(
-    params: StreamAssistantMessageChunkParams,
-  ): Promise<void>;
-
-  requestToolCallConfirmation(
-    params: RequestToolCallConfirmationParams,
-  ): Promise<RequestToolCallConfirmationResponse>;
-
-  pushToolCall(params: PushToolCallParams): Promise<PushToolCallResponse>;
-
-  updateToolCall(params: UpdateToolCallParams): Promise<void>;
-}
-
-export interface Agent {
-  /**
-   * Initializes the agent's state. It should be called before any other method,
-   * and no other methods should be called until it has completed.
-   *
-   * If the agent is not authenticated, then the client should prompt the user to authenticate,
-   * and then call the `authenticate` method.
-   * Otherwise the client can send other messages to the agent.
-   */
-  initialize(params: InitializeParams): Promise<InitializeResponse>;
-
-  /**
-   * Begins the authentication process.
-   *
-   * This method should only be called if `initialize` indicates the user isn't already authenticated.
-   * The Promise MUST not resolve until authentication is complete.
-   */
-  authenticate(): Promise<void>;
-
-  /**
-   * Allows the user to send a message to the agent.
-   * This method should complete after the agent is finished, during
-   * which time the agent may update the client by calling
-   * streamAssistantMessageChunk and other methods.
-   */
-  sendUserMessage(params: SendUserMessageParams): Promise<void>;
-
-  /**
-   * Cancels the current generation.
-   */
-  cancelSendMessage(): Promise<void>;
-}
+import { z } from 'zod';
+
+/* ACP defines a schema for a protocol that allows GUI applications to interact with agents. */
+export const NEW_SESSION_TOOL_NAME = 'acp/new_session';
+export const LOAD_SESSION_TOOL_NAME = 'acp/load_session';
+export const PROMPT_TOOL_NAME = 'acp/prompt';
+
+// Basic schemas
+export const PermissionOptionKindSchema = z.enum([
+  'allowOnce',
+  'allowAlways',
+  'rejectOnce',
+  'rejectAlways',
+]);
+
+export const ToolKindSchema = z.enum([
+  'read',
+  'edit',
+  'delete',
+  'move',
+  'search',
+  'execute',
+  'think',
+  'fetch',
+  'other',
+]);
+
+export const ToolCallStatusSchema = z.enum([
+  'pending',
+  'inProgress',
+  'completed',
+  'failed',
+]);
+
+// Content schemas
+export const TextContentSchema = z.object({
+  type: z.literal('text'),
+});
+
+export const ImageContentSchema = z.object({
+  type: z.literal('image'),
+});
+
+export const AudioContentSchema = z.object({
+  type: z.literal('audio'),
+});
+
+export const ResourceLinkSchema = z.object({
+  type: z.literal('resource_link'),
+});
+
+export const EmbeddedResourceSchema = z.object({
+  type: z.literal('resource'),
+});
+
+export const ContentBlockSchema = z.union([
+  TextContentSchema,
+  ImageContentSchema,
+  AudioContentSchema,
+  ResourceLinkSchema,
+  EmbeddedResourceSchema,
+]);
+
+// Tool related schemas
+export const McpToolIdSchema = z.object({
+  mcpServer: z.string(),
+  toolName: z.string(),
+});
+
+export const ClientToolsSchema = z.object({
+  readTextFile: z.union([McpToolIdSchema, z.null()]),
+  requestPermission: z.union([McpToolIdSchema, z.null()]),
+  writeTextFile: z.union([McpToolIdSchema, z.null()]),
+});
+
+export const McpServerConfigSchema = z.object({
+  args: z.array(z.string()),
+  command: z.string(),
+  env: z.record(z.string(), z.string()).nullable().optional(),
+});
+
+// Diff schemas
+export const Diff1Schema = z.object({
+  newText: z.string(),
+  oldText: z.union([z.string(), z.null()]),
+  path: z.string(),
+});
+
+export const DiffSchema = z.object({
+  diff: Diff1Schema,
+});
+
+export const ToolCallContentSchema = z.union([ContentBlockSchema, DiffSchema]);
+
+export const ToolCallLocationSchema = z.object({
+  line: z.number().nullable().optional(),
+  path: z.string(),
+});
+
+export const ToolCall1Schema = z.object({
+  content: z.array(ToolCallContentSchema).optional(),
+  kind: ToolKindSchema,
+  label: z.string(),
+  locations: z.array(ToolCallLocationSchema).optional(),
+  rawInput: z.unknown().optional(),
+  status: ToolCallStatusSchema,
+  toolCallId: z.string(),
+});
+
+// Session update schemas
+export const UserMessageSchema = z
+  .object({
+    sessionUpdate: z.literal('userMessage'),
+  })
+  .and(ContentBlockSchema);
+
+export const AgentMessageChunkSchema = z
+  .object({
+    sessionUpdate: z.literal('agentMessageChunk'),
+  })
+  .and(ContentBlockSchema);
+
+export const AgentThoughtChunkSchema = z
+  .object({
+    sessionUpdate: z.literal('agentThoughtChunk'),
+  })
+  .and(ContentBlockSchema);
+
+export const ToolCallSchema = z.object({
+  sessionUpdate: z.literal('toolCall'),
+});
+
+export const ToolCallUpdateSchema = z.object({
+  sessionUpdate: z.literal('toolCallUpdate'),
+});
+
+export const PlanSchema = z.object({
+  sessionUpdate: z.literal('plan'),
+});
+
+export const SessionUpdateSchema = z.union([
+  UserMessageSchema,
+  AgentMessageChunkSchema,
+  AgentThoughtChunkSchema,
+  ToolCallSchema,
+  ToolCallUpdateSchema,
+  PlanSchema,
+]);
+
+// Request/Response schemas
+export const NewSessionArgumentsSchema = z.object({
+  clientTools: ClientToolsSchema,
+  cwd: z.string(),
+  mcpServers: z.record(z.string(), McpServerConfigSchema),
+});
+
+export const NewSessionOutputSchema = z.object({
+  sessionId: z.string(),
+});
+
+export const LoadSessionSchema = z.object({
+  clientTools: ClientToolsSchema,
+  cwd: z.string(),
+  mcpServers: z.record(z.string(), McpServerConfigSchema),
+  sessionId: z.string(),
+});
+
+export const PromptSchema = z.object({
+  prompt: z.array(ContentBlockSchema),
+  sessionId: z.string(),
+});
+
+export const PermissionOptionSchema = z.object({
+  kind: PermissionOptionKindSchema,
+  label: z.string(),
+  optionId: z.string(),
+});
+
+export const RequestPermissionArgumentsSchema = z.object({
+  options: z.array(PermissionOptionSchema),
+  sessionId: z.string(),
+  toolCall: ToolCall1Schema,
+});
+
+export const RequestPermissionOutcomeSchema = z.union([
+  z.object({
+    outcome: z.literal('canceled'),
+  }),
+  z.object({
+    optionId: z.string(),
+    outcome: z.literal('selected'),
+  }),
+]);
+
+export const RequestPermissionOutputSchema = z.object({
+  outcome: RequestPermissionOutcomeSchema,
+});
+
+export const WriteTextFileSchema = z.object({
+  content: z.string(),
+  path: z.string(),
+  sessionId: z.string(),
+});
+
+export const ReadTextFileArgumentsSchema = z.object({
+  limit: z.number().nullable().optional(),
+  line: z.number().nullable().optional(),
+  path: z.string(),
+  sessionId: z.string(),
+});
+
+export const ReadTextFileOutputSchema = z.object({
+  content: z.string(),
+});
+
+export const AgentClientProtocolSchema = z.union([
+  NewSessionArgumentsSchema,
+  NewSessionOutputSchema,
+  LoadSessionSchema,
+  PromptSchema,
+  SessionUpdateSchema,
+  RequestPermissionArgumentsSchema,
+  RequestPermissionOutputSchema,
+  WriteTextFileSchema,
+  ReadTextFileArgumentsSchema,
+  ReadTextFileOutputSchema,
+]);
+
+// Type exports
+export type AgentClientProtocol = z.infer<typeof AgentClientProtocolSchema>;
+export type ContentBlock = z.infer<typeof ContentBlockSchema>;
+export type SessionUpdate = z.infer<typeof SessionUpdateSchema>;
+export type UserMessage = z.infer<typeof UserMessageSchema>;
+export type AgentMessageChunk = z.infer<typeof AgentMessageChunkSchema>;
+export type AgentThoughtChunk = z.infer<typeof AgentThoughtChunkSchema>;
+export type PermissionOptionKind = z.infer<typeof PermissionOptionKindSchema>;
+export type ToolCallContent = z.infer<typeof ToolCallContentSchema>;
+export type ToolKind = z.infer<typeof ToolKindSchema>;
+export type ToolCallStatus = z.infer<typeof ToolCallStatusSchema>;
+export type RequestPermissionOutcome = z.infer<
+  typeof RequestPermissionOutcomeSchema
+>;
+export type NewSessionArguments = z.infer<typeof NewSessionArgumentsSchema>;
+export type ClientTools = z.infer<typeof ClientToolsSchema>;
+export type McpToolId = z.infer<typeof McpToolIdSchema>;
+export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type NewSessionOutput = z.infer<typeof NewSessionOutputSchema>;
+export type LoadSession = z.infer<typeof LoadSessionSchema>;
+export type Prompt = z.infer<typeof PromptSchema>;
+export type TextContent = z.infer<typeof TextContentSchema>;
+export type ImageContent = z.infer<typeof ImageContentSchema>;
+export type AudioContent = z.infer<typeof AudioContentSchema>;
+export type ResourceLink = z.infer<typeof ResourceLinkSchema>;
+export type EmbeddedResource = z.infer<typeof EmbeddedResourceSchema>;
+export type ToolCall = z.infer<typeof ToolCallSchema>;
+export type ToolCallUpdate = z.infer<typeof ToolCallUpdateSchema>;
+export type Plan = z.infer<typeof PlanSchema>;
+export type RequestPermissionArguments = z.infer<
+  typeof RequestPermissionArgumentsSchema
+>;
+export type PermissionOption = z.infer<typeof PermissionOptionSchema>;
+export type ToolCall1 = z.infer<typeof ToolCall1Schema>;
+export type Diff = z.infer<typeof DiffSchema>;
+export type Diff1 = z.infer<typeof Diff1Schema>;
+export type ToolCallLocation = z.infer<typeof ToolCallLocationSchema>;
+export type RequestPermissionOutput = z.infer<
+  typeof RequestPermissionOutputSchema
+>;
+export type WriteTextFile = z.infer<typeof WriteTextFileSchema>;
+export type ReadTextFileArguments = z.infer<typeof ReadTextFileArgumentsSchema>;
+export type ReadTextFileOutput = z.infer<typeof ReadTextFileOutputSchema>;
