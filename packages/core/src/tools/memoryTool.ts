@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BaseTool, Icon, ToolResult } from './tools.js';
+import { BaseTool, Kind, ToolResult } from './tools.js';
 import { FunctionDeclaration, Type } from '@google/genai';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -105,7 +105,7 @@ export class MemoryTool extends BaseTool<SaveMemoryParams, ToolResult> {
       MemoryTool.Name,
       'Save Memory',
       memoryToolDescription,
-      Icon.LightBulb,
+      Kind.Think,
       memoryToolSchemaData.parameters as Record<string, unknown>,
     );
   }

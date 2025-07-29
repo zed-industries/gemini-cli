@@ -21,7 +21,7 @@ import {
   sanitizeParameters,
 } from './tool-registry.js';
 import { DiscoveredMCPTool } from './mcp-tool.js';
-import { BaseTool, Icon, ToolResult } from './tools.js';
+import { BaseTool, Kind, ToolResult } from './tools.js';
 import {
   FunctionDeclaration,
   CallableTool,
@@ -109,7 +109,7 @@ class MockTool extends BaseTool<{ param: string }, ToolResult> {
     displayName = 'A mock tool',
     description = 'A mock tool description',
   ) {
-    super(name, displayName, description, Icon.Hammer, {
+    super(name, displayName, description, Kind.Other, {
       type: Type.OBJECT,
       properties: {
         param: { type: Type.STRING },

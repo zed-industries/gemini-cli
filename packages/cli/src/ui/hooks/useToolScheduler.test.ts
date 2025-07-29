@@ -24,7 +24,7 @@ import {
   ToolCall, // Import from core
   Status as ToolCallStatusType,
   ApprovalMode,
-  Icon,
+  Kind,
 } from '@google/gemini-cli-core';
 import {
   HistoryItemWithoutId,
@@ -57,7 +57,7 @@ const mockTool: Tool = {
   name: 'mockTool',
   displayName: 'Mock Tool',
   description: 'A mock tool for testing',
-  icon: Icon.Hammer,
+  kind: Kind.Other,
   toolLocations: vi.fn(),
   isOutputMarkdown: false,
   canUpdateOutput: false,
@@ -812,7 +812,7 @@ describe('mapToDisplay', () => {
     isOutputMarkdown: false,
     canUpdateOutput: false,
     schema: {},
-    icon: Icon.Hammer,
+    kind: Kind.Other,
     toolLocations: vi.fn(),
     validateToolParams: vi.fn(),
     execute: vi.fn(),

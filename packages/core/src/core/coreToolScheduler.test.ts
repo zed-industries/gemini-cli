@@ -19,7 +19,7 @@ import {
   ToolConfirmationPayload,
   ToolResult,
   Config,
-  Icon,
+  Kind,
   ApprovalMode,
 } from '../index.js';
 import { Part, PartListUnion } from '@google/genai';
@@ -31,7 +31,7 @@ class MockTool extends BaseTool<Record<string, unknown>, ToolResult> {
   executeFn = vi.fn();
 
   constructor(name = 'mockTool') {
-    super(name, name, 'A mock tool', Icon.Hammer, {});
+    super(name, name, 'A mock tool', Kind.Other, {});
   }
 
   async shouldConfirmExecute(
@@ -419,7 +419,7 @@ describe('CoreToolScheduler edit cancellation', () => {
           'mockEditTool',
           'mockEditTool',
           'A mock edit tool',
-          Icon.Pencil,
+          Kind.Edit,
           {},
         );
       }

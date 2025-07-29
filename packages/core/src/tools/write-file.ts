@@ -15,7 +15,7 @@ import {
   ToolEditConfirmationDetails,
   ToolConfirmationOutcome,
   ToolCallConfirmationDetails,
-  Icon,
+  Kind,
 } from './tools.js';
 import { Type } from '@google/genai';
 import { SchemaValidator } from '../utils/schemaValidator.js';
@@ -76,7 +76,7 @@ export class WriteFileTool
       `Writes content to a specified file in the local filesystem.
 
       The user has the ability to modify \`content\`. If modified, this will be stated in the response.`,
-      Icon.Pencil,
+      Kind.Edit,
       {
         properties: {
           file_path: {

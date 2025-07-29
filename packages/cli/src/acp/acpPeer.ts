@@ -20,6 +20,7 @@ import {
   MCPServerConfig,
   ToolConfirmationOutcome,
   ToolCallConfirmationDetails,
+  Kind,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 import { z } from 'zod';
@@ -400,8 +401,7 @@ class GeminiAgentServer {
           label: tool.getDescription(args),
           content,
           locations: tool.toolLocations(args),
-          // todo!
-          kind: 'other',
+          kind: tool.kind,
         },
       };
 
@@ -442,8 +442,7 @@ class GeminiAgentServer {
         label: tool.getDescription(args),
         content: [],
         locations: tool.toolLocations(args),
-        // todo!
-        kind: 'other',
+        kind: tool.kind,
       });
     }
 

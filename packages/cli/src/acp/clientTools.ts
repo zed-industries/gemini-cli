@@ -17,10 +17,12 @@ export class ClientTools {
     acp.RequestPermissionArguments,
     acp.RequestPermissionOutput
   > | null;
+
   readTextFile: ClientTool<
     acp.ReadTextFileArguments,
     acp.ReadTextFileOutput
   > | null;
+
   writeTextFile: ClientTool<acp.WriteTextFileArguments> | null;
 
   constructor(tools: acp.ClientTools, registry: ToolRegistry) {
@@ -37,13 +39,6 @@ export class ClientTools {
     this.writeTextFile = this.#buildTool('writeTextFile');
   }
 
-  #buildTool<In, _Out = null>(
-    name: keyof acp.ClientTools,
-  ): ClientTool<In, null> | null;
-  #buildTool<In, Out>(
-    name: keyof acp.ClientTools,
-    outputSchema: z.ZodType<Out>,
-  ): ClientTool<In, Out> | null;
   #buildTool<In, Out = null>(
     name: keyof acp.ClientTools,
     outputSchema?: z.ZodType<Out>,

@@ -13,7 +13,7 @@ import {
   Tool,
   ToolCallConfirmationDetails,
   Config,
-  Icon,
+  Kind,
 } from '../index.js';
 import { Part, Type } from '@google/genai';
 
@@ -33,7 +33,7 @@ describe('executeToolCall', () => {
       name: 'testTool',
       displayName: 'Test Tool',
       description: 'A tool for testing',
-      icon: Icon.Hammer,
+      kind: Kind.Other,
       schema: {
         name: 'testTool',
         description: 'A tool for testing',
