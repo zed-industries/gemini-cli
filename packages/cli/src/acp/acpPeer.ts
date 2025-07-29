@@ -97,6 +97,7 @@ class GeminiAgentServer {
       } catch (error) {
         // todo! handle auth
         console.error('Failed to refresh auth:', error);
+        throw error;
       }
     }
     // todo! set cwd
