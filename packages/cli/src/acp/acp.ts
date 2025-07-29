@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
-export * as zod from "./zod.js";
-import * as generated from "./zod.js";
+export * as zod from './zod.js';
+import * as generated from './zod.js';
 
 export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
 
@@ -92,8 +92,8 @@ export type AgentClientProtocol = z.infer<
 >;
 
 export const AGENT_METHODS = {
-  new_session: "acp/new_session",
-  load_session: "acp/load_session",
-  prompt: "acp/prompt",
-  session_update: "acp/session_update",
+  new_session: 'acp/new_session',
+  load_session: 'acp/load_session',
+  prompt: 'acp/prompt',
+  session_update: 'acp/session_update',
 };

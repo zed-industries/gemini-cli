@@ -40,8 +40,8 @@ export async function runAcpPeer(config: Config, settings: LoadedSettings) {
 }
 
 interface Session {
-  clientTools: acp.ClientTools,
-  chat: GeminiChat,
+  clientTools: acp.ClientTools;
+  chat: GeminiChat;
   pendingSend?: AbortController;
 }
 
@@ -64,7 +64,10 @@ class GeminiAgentServer {
         inputSchema: acp.zod.newSessionArgumentsSchema.shape,
         outputSchema: acp.zod.newSessionOutputSchema.shape,
       },
-      async (args) => ({ content: [], structuredContent: await this.newSession(args) }),
+      async (args) => ({
+        content: [],
+        structuredContent: await this.newSession(args),
+      }),
     );
     this.#server.registerTool(
       acp.AGENT_METHODS.prompt,
@@ -73,7 +76,7 @@ class GeminiAgentServer {
       },
       async (args) => {
         await this.prompt(args);
-        return ({ content: [] });
+        return { content: [] };
       },
     );
   }
@@ -83,7 +86,11 @@ class GeminiAgentServer {
     await this.#server.connect(transport);
   }
 
-  async newSession({ cwd, mcpServers, clientTools }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
+  async newSession({
+    cwd,
+    mcpServers,
+    clientTools,
+  }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
     if (this.settings.merged.selectedAuthType) {
       try {
         await this.config.refreshAuth(this.settings.merged.selectedAuthType);
@@ -104,8 +111,8 @@ class GeminiAgentServer {
     this.#sessions.set(sessionId, session);
 
     return {
-      sessionId
-    }
+      sessionId,
+    };
   }
 
   // async initialize(_: acp.InitializeParams): Promise<acp.InitializeResponse> {
@@ -197,10 +204,15 @@ class GeminiAgentServer {
                 continue;
               }
 
-              const content: acp.ContentBlock = { type: "text", text: part.text };
+              const content: acp.ContentBlock = {
+                type: 'text',
+                text: part.text,
+              };
 
               this.#sendSessionUpdate(sessionId, {
-                sessionUpdate: part.thought ? "agentThoughtChunk" : "agentMessageChunk",
+                sessionUpdate: part.thought
+                  ? 'agentThoughtChunk'
+                  : 'agentMessageChunk',
                 content,
               });
             }
@@ -213,9 +225,7 @@ class GeminiAgentServer {
       } catch (error) {
         if (getErrorStatus(error) === 429) {
           // todo! send tagged error?
-          throw new Error(
-            'Rate limit exceeded. Try again later.',
-          );
+          throw new Error('Rate limit exceeded. Try again later.');
         }
 
         throw error;
@@ -326,7 +336,6 @@ class GeminiAgentServer {
       //     newText: confirmationDetails.newContent,
       //   };
       // }
-
       // const result = await this.client.requestToolCallConfirmation({
       //   label: tool.getDescription(args),
       //   icon: tool.icon,
@@ -334,14 +343,12 @@ class GeminiAgentServer {
       //   confirmation: toAcpToolCallConfirmation(confirmationDetails),
       //   locations: tool.toolLocations(args),
       // });
-
       // await confirmationDetails.onConfirm(toToolCallOutcome(result.outcome));
       // switch (result.outcome) {
       //   case 'reject':
       //     return errorResponse(
       //       new Error(`Tool "${fc.name}" not allowed to run by the user.`),
       //     );
-
       //   case 'cancel':
       //     return errorResponse(
       //       new Error(`Tool "${fc.name}" was canceled by the user.`),
@@ -356,20 +363,19 @@ class GeminiAgentServer {
       //     throw new Error(`Unexpected: ${resultOutcome}`);
       //   }
       // }
-
     } else {
       await this.#sendSessionUpdate(sessionId, {
-        sessionUpdate: "toolCall",
+        sessionUpdate: 'toolCall',
         toolCallId: callId,
-        status: "inProgress",
+        status: 'inProgress',
         // todo!
-        label: "TODO",
+        label: 'TODO',
         // todo!
         content: [],
         // todo!
         locations: [],
         // todo!
-        kind: "other"
+        kind: 'other',
       });
     }
 
@@ -378,9 +384,9 @@ class GeminiAgentServer {
       // const toolCallContent = toToolCallContent(toolResult);
 
       await this.#sendSessionUpdate(sessionId, {
-        sessionUpdate: "toolCallUpdate",
+        sessionUpdate: 'toolCallUpdate',
         toolCallId: callId,
-        status: "completed",
+        status: 'completed',
         // todo! update content and other fields
       });
 
@@ -400,10 +406,12 @@ class GeminiAgentServer {
       const error = e instanceof Error ? e : new Error(String(e));
 
       await this.#sendSessionUpdate(sessionId, {
-        sessionUpdate: "toolCallUpdate",
+        sessionUpdate: 'toolCallUpdate',
         toolCallId: callId,
-        status: "failed",
-        content: [{ type: "content", content: { type: "text", text: error.message } }]
+        status: 'failed',
+        content: [
+          { type: 'content', content: { type: 'text', text: error.message } },
+        ],
       });
 
       return errorResponse(error);
@@ -416,7 +424,7 @@ class GeminiAgentServer {
   ): Promise<Part[]> {
     return message.map((part) => {
       switch (part.type) {
-        case "text":
+        case 'text':
           return { text: part.text };
         default:
           // todo!

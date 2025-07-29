@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
 export const newSessionOutputSchema = z.object({
   sessionId: z.string(),
@@ -27,7 +27,7 @@ export const readTextFileOutputSchema = z.object({
   content: z.string(),
 });
 
-export const roleSchema = z.union([z.literal("assistant"), z.literal("user")]);
+export const roleSchema = z.union([z.literal('assistant'), z.literal('user')]);
 
 export const textResourceContentsSchema = z.object({
   mimeType: z.string().optional().nullable(),
@@ -42,15 +42,15 @@ export const blobResourceContentsSchema = z.object({
 });
 
 export const toolKindSchema = z.union([
-  z.literal("read"),
-  z.literal("edit"),
-  z.literal("delete"),
-  z.literal("move"),
-  z.literal("search"),
-  z.literal("execute"),
-  z.literal("think"),
-  z.literal("fetch"),
-  z.literal("other"),
+  z.literal('read'),
+  z.literal('edit'),
+  z.literal('delete'),
+  z.literal('move'),
+  z.literal('search'),
+  z.literal('execute'),
+  z.literal('think'),
+  z.literal('fetch'),
+  z.literal('other'),
 ]);
 
 export const toolCallLocationSchema = z.object({
@@ -59,36 +59,36 @@ export const toolCallLocationSchema = z.object({
 });
 
 export const toolCallStatusSchema = z.union([
-  z.literal("pending"),
-  z.literal("inProgress"),
-  z.literal("completed"),
-  z.literal("failed"),
+  z.literal('pending'),
+  z.literal('inProgress'),
+  z.literal('completed'),
+  z.literal('failed'),
 ]);
 
 export const planEntrySchema = z.object({
   content: z.string(),
-  priority: z.union([z.literal("high"), z.literal("medium"), z.literal("low")]),
+  priority: z.union([z.literal('high'), z.literal('medium'), z.literal('low')]),
   status: z.union([
-    z.literal("pending"),
-    z.literal("in_progress"),
-    z.literal("completed"),
+    z.literal('pending'),
+    z.literal('in_progress'),
+    z.literal('completed'),
   ]),
 });
 
 export const permissionOptionKindSchema = z.union([
-  z.literal("allowOnce"),
-  z.literal("allowAlways"),
-  z.literal("rejectOnce"),
-  z.literal("rejectAlways"),
+  z.literal('allowOnce'),
+  z.literal('allowAlways'),
+  z.literal('rejectOnce'),
+  z.literal('rejectAlways'),
 ]);
 
 export const requestPermissionOutcomeSchema = z.union([
   z.object({
-    outcome: z.literal("canceled"),
+    outcome: z.literal('canceled'),
   }),
   z.object({
     optionId: z.string(),
-    outcome: z.literal("selected"),
+    outcome: z.literal('selected'),
   }),
 ]);
 
@@ -153,19 +153,19 @@ export const contentBlockSchema = z.union([
   z.object({
     annotations: annotationsSchema.optional().nullable(),
     text: z.string(),
-    type: z.literal("text"),
+    type: z.literal('text'),
   }),
   z.object({
     annotations: annotationsSchema.optional().nullable(),
     data: z.string(),
     mimeType: z.string(),
-    type: z.literal("image"),
+    type: z.literal('image'),
   }),
   z.object({
     annotations: annotationsSchema.optional().nullable(),
     data: z.string(),
     mimeType: z.string(),
-    type: z.literal("audio"),
+    type: z.literal('audio'),
   }),
   z.object({
     annotations: annotationsSchema.optional().nullable(),
@@ -174,26 +174,26 @@ export const contentBlockSchema = z.union([
     name: z.string(),
     size: z.number().optional().nullable(),
     title: z.string().optional().nullable(),
-    type: z.literal("resource_link"),
+    type: z.literal('resource_link'),
     uri: z.string(),
   }),
   z.object({
     annotations: annotationsSchema.optional().nullable(),
     resource: embeddedResourceResourceSchema,
-    type: z.literal("resource"),
+    type: z.literal('resource'),
   }),
 ]);
 
 export const toolCallContentSchema = z.union([
   z.object({
     content: contentBlockSchema,
-    type: z.literal("content"),
+    type: z.literal('content'),
   }),
   z.object({
     newText: z.string(),
     oldText: z.string().nullable(),
     path: z.string(),
-    type: z.literal("diff"),
+    type: z.literal('diff'),
   }),
 ]);
 
@@ -215,15 +215,15 @@ export const toolCallSchema = z.object({
 export const sessionUpdateSchema = z.union([
   z.object({
     content: contentBlockSchema,
-    sessionUpdate: z.literal("userMessageChunk"),
+    sessionUpdate: z.literal('userMessageChunk'),
   }),
   z.object({
     content: contentBlockSchema,
-    sessionUpdate: z.literal("agentMessageChunk"),
+    sessionUpdate: z.literal('agentMessageChunk'),
   }),
   z.object({
     content: contentBlockSchema,
-    sessionUpdate: z.literal("agentThoughtChunk"),
+    sessionUpdate: z.literal('agentThoughtChunk'),
   }),
   z.object({
     content: z.array(toolCallContentSchema).optional(),
@@ -231,7 +231,7 @@ export const sessionUpdateSchema = z.union([
     label: z.string(),
     locations: z.array(toolCallLocationSchema).optional(),
     rawInput: z.unknown().optional(),
-    sessionUpdate: z.literal("toolCall"),
+    sessionUpdate: z.literal('toolCall'),
     status: toolCallStatusSchema,
     toolCallId: z.string(),
   }),
@@ -241,13 +241,13 @@ export const sessionUpdateSchema = z.union([
     label: z.string().optional().nullable(),
     locations: z.array(toolCallLocationSchema).optional().nullable(),
     rawInput: z.unknown().optional(),
-    sessionUpdate: z.literal("toolCallUpdate"),
+    sessionUpdate: z.literal('toolCallUpdate'),
     status: toolCallStatusSchema.optional().nullable(),
     toolCallId: z.string(),
   }),
   z.object({
     entries: z.array(planEntrySchema),
-    sessionUpdate: z.literal("plan"),
+    sessionUpdate: z.literal('plan'),
   }),
 ]);
 
