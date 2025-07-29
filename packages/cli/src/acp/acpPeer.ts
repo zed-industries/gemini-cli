@@ -492,9 +492,31 @@ class GeminiAgentServer {
       switch (part.type) {
         case 'text':
           return { text: part.text };
-        default:
-          // todo!
-          throw new Error('TODO!');
+        case 'image':
+        case 'audio':
+          return { inlineData: { data: part.data, mimeType: part.mimeType } };
+        case 'resource':
+          return {
+            inlineData: {
+              mimeType: part.resource.mimeType ?? undefined,
+              data:
+                'text' in part.resource
+                  ? part.resource.text
+                  : part.resource.blob,
+            },
+          };
+        case 'resource_link':
+          return {
+            fileData: {
+              mimeData: part.mimeType,
+              name: part.name,
+              fileUri: part.uri,
+            },
+          };
+        default: {
+          const unreachable: never = part;
+          throw new Error(`Unexpected chunk type: '${unreachable}'`);
+        }
       }
     });
 
