@@ -18,6 +18,7 @@ import {
   // isWithinRoot,
   getErrorStatus,
   MCPServerConfig,
+  qualifyMCPTool,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
@@ -376,7 +377,14 @@ class GeminiAgentServer {
       args,
       abortSignal,
     );
-    if (confirmationDetails) {
+    if (confirmationDetails && session.clientTools.requestPermission) {
+      const permissionTool = toolRegistry.getTool(
+        qualifyMCPTool(
+          session.clientTools.requestPermission.mcpServer,
+          session.clientTools.requestPermission.toolName,
+        ),
+      );
+
       // todo! confirmation
       // let content: acp.ToolCallContent | null = null;
       // if (confirmationDetails.type === 'edit') {
@@ -419,12 +427,9 @@ class GeminiAgentServer {
         sessionUpdate: 'toolCall',
         toolCallId: callId,
         status: 'inProgress',
-        // todo!
-        label: 'TODO',
-        // todo!
+        label: tool.getDescription(args),
         content: [],
-        // todo!
-        locations: [],
+        locations: tool.toolLocations(args),
         // todo!
         kind: 'other',
       });
@@ -432,13 +437,13 @@ class GeminiAgentServer {
 
     try {
       const toolResult: ToolResult = await tool.execute(args, abortSignal);
-      // const toolCallContent = toToolCallContent(toolResult);
+      const content = toToolCallContent(toolResult);
 
       await this.#sendSessionUpdate(sessionId, {
         sessionUpdate: 'toolCallUpdate',
         toolCallId: callId,
         status: 'completed',
-        // todo! update content and other fields
+        content: content ? [content] : [],
       });
 
       const durationMs = Date.now() - startTime;
@@ -741,25 +746,25 @@ class GeminiAgentServer {
   }
 }
 
-// function toToolCallContent(toolResult: ToolResult): acp.ToolCallContent | null {
-//   if (toolResult.returnDisplay) {
-//     if (typeof toolResult.returnDisplay === 'string') {
-//       return {
-//         type: 'markdown',
-//         markdown: toolResult.returnDisplay,
-//       };
-//     } else {
-//       return {
-//         type: 'diff',
-//         path: toolResult.returnDisplay.fileName,
-//         oldText: toolResult.returnDisplay.originalContent,
-//         newText: toolResult.returnDisplay.newContent,
-//       };
-//     }
-//   } else {
-//     return null;
-//   }
-// }
+function toToolCallContent(toolResult: ToolResult): acp.ToolCallContent | null {
+  if (toolResult.returnDisplay) {
+    if (typeof toolResult.returnDisplay === 'string') {
+      return {
+        type: 'content',
+        content: { type: 'text', text: toolResult.returnDisplay },
+      };
+    } else {
+      return {
+        type: 'diff',
+        path: toolResult.returnDisplay.fileName,
+        oldText: toolResult.returnDisplay.originalContent,
+        newText: toolResult.returnDisplay.newContent,
+      };
+    }
+  } else {
+    return null;
+  }
+}
 
 // function toAcpToolCallConfirmation(
 //   confirmationDetails: ToolCallConfirmationDetails,

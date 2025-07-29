@@ -55,7 +55,7 @@ export class DiscoveredMCPTool extends BaseTool<ToolParams, ToolResult> {
       this.parameterSchemaJson,
       this.timeout,
       this.trust,
-      `${this.serverName}__${this.serverToolName}`,
+      qualifyMCPTool(this.serverName, this.serverToolName),
     );
   }
 
@@ -192,4 +192,8 @@ export function generateValidName(name: string) {
       validToolname.slice(0, 28) + '___' + validToolname.slice(-32);
   }
   return validToolname;
+}
+
+export function qualifyMCPTool(serverName: string, serverToolName: string): string {
+  return `${serverName}__${serverToolName}`;
 }
