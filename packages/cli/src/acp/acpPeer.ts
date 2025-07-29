@@ -13,9 +13,9 @@ import {
   convertToFunctionResponse,
   // ToolCallConfirmationDetails,
   // ToolConfirmationOutcome,
-  // isNodeError,
-  // getErrorMessage,
-  // isWithinRoot,
+  isNodeError,
+  getErrorMessage,
+  isWithinRoot,
   getErrorStatus,
   MCPServerConfig,
   ToolConfirmationOutcome,
@@ -25,8 +25,8 @@ import * as acp from './acp.js';
 import { z } from 'zod';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 import { Settings } from '../config/settings.js';
-// import * as fs from 'fs/promises';
-// import * as path from 'path';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -50,11 +50,23 @@ export async function runAcpPeer(
   await server.connect();
 }
 
-interface Session {
-  clientTools: ClientTools;
-  chat: GeminiChat;
-  config: Config;
+class Session {
   pendingSend?: AbortController;
+
+  constructor(
+    readonly clientTools: ClientTools,
+    readonly chat: GeminiChat,
+    readonly config: Config,
+    pendingSend?: AbortController,
+  ) {
+    this.pendingSend = pendingSend;
+  }
+
+  debug(msg: string) {
+    if (this.config.getDebugMode()) {
+      console.warn(msg);
+    }
+  }
 }
 
 class GeminiAgentServer {
@@ -155,11 +167,11 @@ class GeminiAgentServer {
     const config = await this.newConfig(sessionId, cwd, mcpServers);
     const geminiClient = config.getGeminiClient();
     const chat = await geminiClient.startChat();
-    const session = {
+    const session = new Session(
+      new ClientTools(clientTools, await config.getToolRegistry()),
       chat,
-      clientTools: new ClientTools(clientTools, await config.getToolRegistry()),
       config,
-    };
+    );
     this.#sessions.set(sessionId, session);
 
     return {
@@ -215,7 +227,11 @@ class GeminiAgentServer {
     const chat = session.chat;
 
     const toolRegistry: ToolRegistry = await session.config.getToolRegistry();
-    const parts = await this.#resolvePrompt(params.prompt, pendingSend.signal);
+    const parts = await this.#resolvePrompt(
+      sessionId,
+      params.prompt,
+      pendingSend.signal,
+    );
 
     let nextMessage: Content | null = { role: 'user', parts };
 
@@ -485,26 +501,15 @@ class GeminiAgentServer {
   }
 
   async #resolvePrompt(
+    sessionId: string,
     message: acp.ContentBlock[],
-    _abortSignal: AbortSignal,
+    abortSignal: AbortSignal,
   ): Promise<Part[]> {
-    return message.map((part) => {
+    const session = this.#sessions.get(sessionId)!;
+    const parts = message.map((part) => {
       switch (part.type) {
         case 'text':
           return { text: part.text };
-        case 'image':
-        case 'audio':
-          return { inlineData: { data: part.data, mimeType: part.mimeType } };
-        case 'resource':
-          return {
-            inlineData: {
-              mimeType: part.resource.mimeType ?? undefined,
-              data:
-                'text' in part.resource
-                  ? part.resource.text
-                  : part.resource.blob,
-            },
-          };
         case 'resource_link':
           return {
             fileData: {
@@ -514,267 +519,272 @@ class GeminiAgentServer {
             },
           };
         default: {
-          const unreachable: never = part;
-          throw new Error(`Unexpected chunk type: '${unreachable}'`);
+          throw new Error(`Unexpected chunk type: '${part.type}'`);
         }
       }
     });
 
-    // todo! @mentions
-    // const atPathCommandParts = message.chunks.filter((part) => 'path' in part);
+    const atPathCommandParts = parts.filter((part) => 'fileData' in part);
 
-    // if (atPathCommandParts.length === 0) {
-    //   return message.chunks.map((chunk) => {
-    //     if ('text' in chunk) {
-    //       return { text: chunk.text };
-    //     } else {
-    //       throw new Error('Unexpected chunk type');
-    //     }
-    //   });
-    // }
+    if (atPathCommandParts.length === 0) {
+      return parts;
+    }
 
-    // // Get centralized file discovery service
-    // const fileDiscovery = session.config.getFileService();
-    // const respectGitIgnore = session.config.getFileFilteringRespectGitIgnore();
+    // Get centralized file discovery service
+    const fileDiscovery = session.config.getFileService();
+    const respectGitIgnore = session.config.getFileFilteringRespectGitIgnore();
 
-    // const pathSpecsToRead: string[] = [];
-    // const atPathToResolvedSpecMap = new Map<string, string>();
-    // const contentLabelsForDisplay: string[] = [];
-    // const ignoredPaths: string[] = [];
+    const pathSpecsToRead: string[] = [];
+    const atPathToResolvedSpecMap = new Map<string, string>();
+    const contentLabelsForDisplay: string[] = [];
+    const ignoredPaths: string[] = [];
 
-    // const toolRegistry = await session.config.getToolRegistry();
-    // const readManyFilesTool = toolRegistry.getTool('read_many_files');
-    // const globTool = toolRegistry.getTool('glob');
+    const toolRegistry = await session.config.getToolRegistry();
+    const readManyFilesTool = toolRegistry.getTool('read_many_files');
+    const globTool = toolRegistry.getTool('glob');
 
-    // if (!readManyFilesTool) {
-    //   throw new Error('Error: read_many_files tool not found.');
-    // }
+    if (!readManyFilesTool) {
+      throw new Error('Error: read_many_files tool not found.');
+    }
 
-    // for (const atPathPart of atPathCommandParts) {
-    //   const pathName = atPathPart.path;
+    for (const atPathPart of atPathCommandParts) {
+      const pathName = atPathPart.fileData!.fileUri;
+      // Check if path should be ignored by git
+      if (fileDiscovery.shouldGitIgnoreFile(pathName)) {
+        ignoredPaths.push(pathName);
+        const reason = respectGitIgnore
+          ? 'git-ignored and will be skipped'
+          : 'ignored by custom patterns';
+        console.warn(`Path ${pathName} is ${reason}.`);
+        continue;
+      }
+      let currentPathSpec = pathName;
+      let resolvedSuccessfully = false;
+      try {
+        const absolutePath = path.resolve(
+          session.config.getTargetDir(),
+          pathName,
+        );
+        if (isWithinRoot(absolutePath, session.config.getTargetDir())) {
+          const stats = await fs.stat(absolutePath);
+          if (stats.isDirectory()) {
+            currentPathSpec = pathName.endsWith('/')
+              ? `${pathName}**`
+              : `${pathName}/**`;
+            session.debug(
+              `Path ${pathName} resolved to directory, using glob: ${currentPathSpec}`,
+            );
+          } else {
+            session.debug(
+              `Path ${pathName} resolved to file: ${currentPathSpec}`,
+            );
+          }
+          resolvedSuccessfully = true;
+        } else {
+          session.debug(
+            `Path ${pathName} is outside the project directory. Skipping.`,
+          );
+        }
+      } catch (error) {
+        if (isNodeError(error) && error.code === 'ENOENT') {
+          if (session.config.getEnableRecursiveFileSearch() && globTool) {
+            session.debug(
+              `Path ${pathName} not found directly, attempting glob search.`,
+            );
+            try {
+              const globResult = await globTool.execute(
+                {
+                  pattern: `**/*${pathName}*`,
+                  path: session.config.getTargetDir(),
+                },
+                abortSignal,
+              );
+              if (
+                globResult.llmContent &&
+                typeof globResult.llmContent === 'string' &&
+                !globResult.llmContent.startsWith('No files found') &&
+                !globResult.llmContent.startsWith('Error:')
+              ) {
+                const lines = globResult.llmContent.split('\n');
+                if (lines.length > 1 && lines[1]) {
+                  const firstMatchAbsolute = lines[1].trim();
+                  currentPathSpec = path.relative(
+                    session.config.getTargetDir(),
+                    firstMatchAbsolute,
+                  );
+                  session.debug(
+                    `Glob search for ${pathName} found ${firstMatchAbsolute}, using relative path: ${currentPathSpec}`,
+                  );
+                  resolvedSuccessfully = true;
+                } else {
+                  session.debug(
+                    `Glob search for '**/*${pathName}*' did not return a usable path. Path ${pathName} will be skipped.`,
+                  );
+                }
+              } else {
+                session.debug(
+                  `Glob search for '**/*${pathName}*' found no files or an error. Path ${pathName} will be skipped.`,
+                );
+              }
+            } catch (globError) {
+              console.error(
+                `Error during glob search for ${pathName}: ${getErrorMessage(globError)}`,
+              );
+            }
+          } else {
+            session.debug(
+              `Glob tool not found. Path ${pathName} will be skipped.`,
+            );
+          }
+        } else {
+          console.error(
+            `Error stating path ${pathName}. Path ${pathName} will be skipped.`,
+          );
+        }
+      }
+      if (resolvedSuccessfully) {
+        pathSpecsToRead.push(currentPathSpec);
+        atPathToResolvedSpecMap.set(pathName, currentPathSpec);
+        contentLabelsForDisplay.push(pathName);
+      }
+    }
+    // Construct the initial part of the query for the LLM
+    let initialQueryText = '';
+    for (let i = 0; i < parts.length; i++) {
+      const chunk = parts[i];
+      if ('text' in chunk) {
+        initialQueryText += chunk.text;
+      } else {
+        // type === 'atPath'
+        const resolvedSpec =
+          chunk.fileData && atPathToResolvedSpecMap.get(chunk.fileData.fileUri);
+        if (
+          i > 0 &&
+          initialQueryText.length > 0 &&
+          !initialQueryText.endsWith(' ') &&
+          resolvedSpec
+        ) {
+          // Add space if previous part was text and didn't end with space, or if previous was @path
+          const prevPart = parts[i - 1];
+          if (
+            'text' in prevPart ||
+            ('fileData' in prevPart &&
+              atPathToResolvedSpecMap.has(prevPart.fileData!.fileUri))
+          ) {
+            initialQueryText += ' ';
+          }
+        }
+        if (resolvedSpec) {
+          initialQueryText += `@${resolvedSpec}`;
+        } else {
+          // If not resolved for reading (e.g. lone @ or invalid path that was skipped),
+          // add the original @-string back, ensuring spacing if it's not the first element.
+          if (
+            i > 0 &&
+            initialQueryText.length > 0 &&
+            !initialQueryText.endsWith(' ') &&
+            !chunk.fileData?.fileUri.startsWith(' ')
+          ) {
+            initialQueryText += ' ';
+          }
+          if (chunk.fileData?.fileUri) {
+            initialQueryText += `@${chunk.fileData.fileUri}`;
+          }
+        }
+      }
+    }
+    initialQueryText = initialQueryText.trim();
+    // Inform user about ignored paths
+    if (ignoredPaths.length > 0) {
+      const ignoreType = respectGitIgnore ? 'git-ignored' : 'custom-ignored';
+      session.debug(
+        `Ignored ${ignoredPaths.length} ${ignoreType} files: ${ignoredPaths.join(', ')}`,
+      );
+    }
+    // Fallback for lone "@" or completely invalid @-commands resulting in empty initialQueryText
+    if (pathSpecsToRead.length === 0) {
+      console.warn('No valid file paths found in @ commands to read.');
+      return [{ text: initialQueryText }];
+    }
+    const processedQueryParts: Part[] = [{ text: initialQueryText }];
+    const toolArgs = {
+      paths: pathSpecsToRead,
+      respectGitIgnore, // Use configuration setting
+    };
 
-    //   // Check if path should be ignored by git
-    //   if (fileDiscovery.shouldGitIgnoreFile(pathName)) {
-    //     ignoredPaths.push(pathName);
-    //     const reason = respectGitIgnore
-    //       ? 'git-ignored and will be skipped'
-    //       : 'ignored by custom patterns';
-    //     console.warn(`Path ${pathName} is ${reason}.`);
-    //     continue;
-    //   }
+    const callId = `${readManyFilesTool.name}-${Date.now()}`;
+    await this.#sendSessionUpdate(sessionId, {
+      sessionUpdate: 'toolCall',
+      toolCallId: callId,
+      status: 'inProgress',
+      label: readManyFilesTool.getDescription(toolArgs),
+      content: [],
+      locations: readManyFilesTool.toolLocations(toolArgs),
+      kind: readManyFilesTool.kind,
+    });
+    try {
+      const result = await readManyFilesTool.execute(toolArgs, abortSignal);
+      const content = toToolCallContent(result) || {
+        type: 'content',
+        content: {
+          type: 'text',
+          text: `Successfully read: ${contentLabelsForDisplay.join(', ')}`,
+        },
+      };
+      await this.#sendSessionUpdate(sessionId, {
+        sessionUpdate: 'toolCallUpdate',
+        toolCallId: callId,
+        status: 'completed',
+        content: content ? [content] : [],
+      });
+      if (Array.isArray(result.llmContent)) {
+        const fileContentRegex = /^--- (.*?) ---\n\n([\s\S]*?)\n\n$/;
+        processedQueryParts.push({
+          text: '\n--- Content from referenced files ---',
+        });
+        for (const part of result.llmContent) {
+          if (typeof part === 'string') {
+            const match = fileContentRegex.exec(part);
+            if (match) {
+              const filePathSpecInContent = match[1]; // This is a resolved pathSpec
+              const fileActualContent = match[2].trim();
+              processedQueryParts.push({
+                text: `\nContent from @${filePathSpecInContent}:\n`,
+              });
+              processedQueryParts.push({ text: fileActualContent });
+            } else {
+              processedQueryParts.push({ text: part });
+            }
+          } else {
+            // part is a Part object.
+            processedQueryParts.push(part);
+          }
+        }
+        processedQueryParts.push({ text: '\n--- End of content ---' });
+      } else {
+        console.warn(
+          'read_many_files tool returned no content or empty content.',
+        );
+      }
+      return processedQueryParts;
+    } catch (error: unknown) {
+      await this.#sendSessionUpdate(sessionId, {
+        sessionUpdate: 'toolCallUpdate',
+        toolCallId: callId,
+        status: 'failed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: `Error reading files (${contentLabelsForDisplay.join(', ')}): ${getErrorMessage(error)}`,
+            },
+          },
+        ],
+      });
 
-    //   let currentPathSpec = pathName;
-    //   let resolvedSuccessfully = false;
-
-    //   try {
-    //     const absolutePath = path.resolve(session.config.getTargetDir(), pathName);
-    //     if (isWithinRoot(absolutePath, session.config.getTargetDir())) {
-    //       const stats = await fs.stat(absolutePath);
-    //       if (stats.isDirectory()) {
-    //         currentPathSpec = pathName.endsWith('/')
-    //           ? `${pathName}**`
-    //           : `${pathName}/**`;
-    //         this.#debug(
-    //           `Path ${pathName} resolved to directory, using glob: ${currentPathSpec}`,
-    //         );
-    //       } else {
-    //         this.#debug(
-    //           `Path ${pathName} resolved to file: ${currentPathSpec}`,
-    //         );
-    //       }
-    //       resolvedSuccessfully = true;
-    //     } else {
-    //       this.#debug(
-    //         `Path ${pathName} is outside the project directory. Skipping.`,
-    //       );
-    //     }
-    //   } catch (error) {
-    //     if (isNodeError(error) && error.code === 'ENOENT') {
-    //       if (session.config.getEnableRecursiveFileSearch() && globTool) {
-    //         this.#debug(
-    //           `Path ${pathName} not found directly, attempting glob search.`,
-    //         );
-    //         try {
-    //           const globResult = await globTool.execute(
-    //             {
-    //               pattern: `**/*${pathName}*`,
-    //               path: session.config.getTargetDir(),
-    //             },
-    //             abortSignal,
-    //           );
-    //           if (
-    //             globResult.llmContent &&
-    //             typeof globResult.llmContent === 'string' &&
-    //             !globResult.llmContent.startsWith('No files found') &&
-    //             !globResult.llmContent.startsWith('Error:')
-    //           ) {
-    //             const lines = globResult.llmContent.split('\n');
-    //             if (lines.length > 1 && lines[1]) {
-    //               const firstMatchAbsolute = lines[1].trim();
-    //               currentPathSpec = path.relative(
-    //                 session.config.getTargetDir(),
-    //                 firstMatchAbsolute,
-    //               );
-    //               this.#debug(
-    //                 `Glob search for ${pathName} found ${firstMatchAbsolute}, using relative path: ${currentPathSpec}`,
-    //               );
-    //               resolvedSuccessfully = true;
-    //             } else {
-    //               this.#debug(
-    //                 `Glob search for '**/*${pathName}*' did not return a usable path. Path ${pathName} will be skipped.`,
-    //               );
-    //             }
-    //           } else {
-    //             this.#debug(
-    //               `Glob search for '**/*${pathName}*' found no files or an error. Path ${pathName} will be skipped.`,
-    //             );
-    //           }
-    //         } catch (globError) {
-    //           console.error(
-    //             `Error during glob search for ${pathName}: ${getErrorMessage(globError)}`,
-    //           );
-    //         }
-    //       } else {
-    //         this.#debug(
-    //           `Glob tool not found. Path ${pathName} will be skipped.`,
-    //         );
-    //       }
-    //     } else {
-    //       console.error(
-    //         `Error stating path ${pathName}. Path ${pathName} will be skipped.`,
-    //       );
-    //     }
-    //   }
-
-    //   if (resolvedSuccessfully) {
-    //     pathSpecsToRead.push(currentPathSpec);
-    //     atPathToResolvedSpecMap.set(pathName, currentPathSpec);
-    //     contentLabelsForDisplay.push(pathName);
-    //   }
-    // }
-
-    // // Construct the initial part of the query for the LLM
-    // let initialQueryText = '';
-    // for (let i = 0; i < message.chunks.length; i++) {
-    //   const chunk = message.chunks[i];
-    //   if ('text' in chunk) {
-    //     initialQueryText += chunk.text;
-    //   } else {
-    //     // type === 'atPath'
-    //     const resolvedSpec = atPathToResolvedSpecMap.get(chunk.path);
-    //     if (
-    //       i > 0 &&
-    //       initialQueryText.length > 0 &&
-    //       !initialQueryText.endsWith(' ') &&
-    //       resolvedSpec
-    //     ) {
-    //       // Add space if previous part was text and didn't end with space, or if previous was @path
-    //       const prevPart = message.chunks[i - 1];
-    //       if (
-    //         'text' in prevPart ||
-    //         ('path' in prevPart && atPathToResolvedSpecMap.has(prevPart.path))
-    //       ) {
-    //         initialQueryText += ' ';
-    //       }
-    //     }
-    //     if (resolvedSpec) {
-    //       initialQueryText += `@${resolvedSpec}`;
-    //     } else {
-    //       // If not resolved for reading (e.g. lone @ or invalid path that was skipped),
-    //       // add the original @-string back, ensuring spacing if it's not the first element.
-    //       if (
-    //         i > 0 &&
-    //         initialQueryText.length > 0 &&
-    //         !initialQueryText.endsWith(' ') &&
-    //         !chunk.path.startsWith(' ')
-    //       ) {
-    //         initialQueryText += ' ';
-    //       }
-    //       initialQueryText += `@${chunk.path}`;
-    //     }
-    //   }
-    // }
-    // initialQueryText = initialQueryText.trim();
-
-    // // Inform user about ignored paths
-    // if (ignoredPaths.length > 0) {
-    //   const ignoreType = respectGitIgnore ? 'git-ignored' : 'custom-ignored';
-    //   this.#debug(
-    //     `Ignored ${ignoredPaths.length} ${ignoreType} files: ${ignoredPaths.join(', ')}`,
-    //   );
-    // }
-
-    // // Fallback for lone "@" or completely invalid @-commands resulting in empty initialQueryText
-    // if (pathSpecsToRead.length === 0) {
-    //   console.warn('No valid file paths found in @ commands to read.');
-    //   return [{ text: initialQueryText }];
-    // }
-
-    // const processedQueryParts: Part[] = [{ text: initialQueryText }];
-
-    // const toolArgs = {
-    //   paths: pathSpecsToRead,
-    //   respectGitIgnore, // Use configuration setting
-    // };
-
-    // const toolCall = await this.client.pushToolCall({
-    //   icon: readManyFilesTool.icon,
-    //   label: readManyFilesTool.getDescription(toolArgs),
-    // });
-    // try {
-    //   const result = await readManyFilesTool.execute(toolArgs, abortSignal);
-    //   const content = toToolCallContent(result) || {
-    //     type: 'markdown',
-    //     markdown: `Successfully read: ${contentLabelsForDisplay.join(', ')}`,
-    //   };
-    //   await this.client.updateToolCall({
-    //     toolCallId: toolCall.id,
-    //     status: 'finished',
-    //     content,
-    //   });
-
-    //   if (Array.isArray(result.llmContent)) {
-    //     const fileContentRegex = /^--- (.*?) ---\n\n([\s\S]*?)\n\n$/;
-    //     processedQueryParts.push({
-    //       text: '\n--- Content from referenced files ---',
-    //     });
-    //     for (const part of result.llmContent) {
-    //       if (typeof part === 'string') {
-    //         const match = fileContentRegex.exec(part);
-    //         if (match) {
-    //           const filePathSpecInContent = match[1]; // This is a resolved pathSpec
-    //           const fileActualContent = match[2].trim();
-    //           processedQueryParts.push({
-    //             text: `\nContent from @${filePathSpecInContent}:\n`,
-    //           });
-    //           processedQueryParts.push({ text: fileActualContent });
-    //         } else {
-    //           processedQueryParts.push({ text: part });
-    //         }
-    //       } else {
-    //         // part is a Part object.
-    //         processedQueryParts.push(part);
-    //       }
-    //     }
-    //     processedQueryParts.push({ text: '\n--- End of content ---' });
-    //   } else {
-    //     console.warn(
-    //       'read_many_files tool returned no content or empty content.',
-    //     );
-    //   }
-
-    //   return processedQueryParts;
-    // } catch (error: unknown) {
-    //   await this.client.updateToolCall({
-    //     toolCallId: toolCall.id,
-    //     status: 'error',
-    //     content: {
-    //       type: 'markdown',
-    //       markdown: `Error reading files (${contentLabelsForDisplay.join(', ')}): ${getErrorMessage(error)}`,
-    //     },
-    //   });
-    //   throw error;
-    // }
+      throw error;
+    }
   }
 }
 
