@@ -20,7 +20,6 @@ import {
   MCPServerConfig,
   ToolConfirmationOutcome,
   ToolCallConfirmationDetails,
-  Kind,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 import { z } from 'zod';
