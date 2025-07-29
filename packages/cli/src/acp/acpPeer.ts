@@ -17,31 +17,39 @@ import {
   // getErrorMessage,
   // isWithinRoot,
   getErrorStatus,
+  MCPServerConfig,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
-import { LoadedSettings } from '../config/settings.js';
+import { Settings } from '../config/settings.js';
 // import * as fs from 'fs/promises';
 // import * as path from 'path';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { randomUUID } from 'crypto';
+import { Extension } from '../config/extension.js';
+import { CliArgs, loadCliConfig } from '../config/config.js';
 
-export async function runAcpPeer(config: Config, settings: LoadedSettings) {
+export async function runAcpPeer(
+  baseSettings: Settings,
+  extensions: Extension[],
+  argv: CliArgs,
+) {
   // Stdout is used to send messages to the client, so console.log/console.info
   // messages to stderr so that they don't interfere with ACP.
   console.log = console.error;
   console.info = console.error;
   console.debug = console.error;
 
-  const server = new GeminiAgentServer(config, settings);
+  const server = new GeminiAgentServer(baseSettings, extensions, argv);
   await server.connect();
 }
 
 interface Session {
   clientTools: acp.ClientTools;
   chat: GeminiChat;
+  config: Config;
   pendingSend?: AbortController;
 }
 
@@ -50,8 +58,9 @@ class GeminiAgentServer {
   #server: McpServer;
 
   constructor(
-    private config: Config,
-    private settings: LoadedSettings,
+    private baseSettings: Settings,
+    private extensions: Extension[],
+    private argv: CliArgs,
   ) {
     this.#server = new McpServer({
       name: 'gemini-cli',
@@ -86,28 +95,68 @@ class GeminiAgentServer {
     await this.#server.connect(transport);
   }
 
-  async newSession({
-    cwd,
-    mcpServers,
-    clientTools,
-  }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
-    if (this.settings.merged.selectedAuthType) {
+  async newConfig(
+    sessionId: string,
+    cwd: string,
+    mcpServers: acp.McpServer[],
+  ): Promise<Config> {
+    const mergedMcpServers = mcpServers.reduce(
+      (acc, { command, args, env: rawEnv, name }) => {
+        const env = rawEnv.reduce<Record<string, string>>(
+          (acc, { name, value }) => {
+            acc[name] = value;
+            return acc;
+          },
+          {},
+        );
+        acc[name] = new MCPServerConfig(command, args, env, cwd);
+        return acc;
+      },
+      { ...this.baseSettings.mcpServers },
+    );
+    const settings: Settings = {
+      ...this.baseSettings,
+      mcpServers: mergedMcpServers,
+    };
+    const config = await loadCliConfig(
+      settings,
+      this.extensions,
+      sessionId,
+      this.argv,
+    );
+    config.update({
+      cwd,
+      sessionId,
+      targetDir: cwd,
+      model: config.getModel(),
+      debugMode: config.getDebugMode(),
+    });
+    await config.initialize();
+    if (settings.selectedAuthType) {
       try {
-        await this.config.refreshAuth(this.settings.merged.selectedAuthType);
+        await config.refreshAuth(settings.selectedAuthType);
       } catch (error) {
         // todo! handle auth
         console.error('Failed to refresh auth:', error);
         throw error;
       }
     }
-    // todo! set cwd
-    // todo! load mcpServers
+    return config;
+  }
+
+  async newSession({
+    cwd,
+    mcpServers,
+    clientTools,
+  }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
     const sessionId = randomUUID();
-    const geminiClient = this.config.getGeminiClient();
+    const config = await this.newConfig(sessionId, cwd, mcpServers);
+    const geminiClient = config.getGeminiClient();
     const chat = await geminiClient.startChat();
     const session = {
       chat,
       clientTools,
+      config,
     };
     this.#sessions.set(sessionId, session);
 
@@ -120,7 +169,7 @@ class GeminiAgentServer {
   //   let isAuthenticated = false;
   //   if (this.settings.merged.selectedAuthType) {
   //     try {
-  //       await this.config.refreshAuth(this.settings.merged.selectedAuthType);
+  //       await session.config.refreshAuth(this.settings.merged.selectedAuthType);
   //       isAuthenticated = true;
   //     } catch (error) {
   //       console.error('Failed to refresh auth:', error);
@@ -131,7 +180,7 @@ class GeminiAgentServer {
 
   // async authenticate(): Promise<void> {
   //   await clearCachedCredentialFile();
-  //   await this.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+  //   await session.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
   //   this.settings.setValue(
   //     SettingScope.User,
   //     'selectedAuthType',
@@ -163,7 +212,7 @@ class GeminiAgentServer {
     const promptId = Math.random().toString(16).slice(2);
     const chat = session.chat;
 
-    const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
+    const toolRegistry: ToolRegistry = await session.config.getToolRegistry();
     const parts = await this.#resolvePrompt(params.prompt, pendingSend.signal);
 
     let nextMessage: Content | null = { role: 'user', parts };
@@ -282,12 +331,13 @@ class GeminiAgentServer {
   ): Promise<PartListUnion> {
     const callId = fc.id ?? `${fc.name}-${Date.now()}`;
     const args = (fc.args ?? {}) as Record<string, unknown>;
+    const session = this.#sessions.get(sessionId)!;
 
     const startTime = Date.now();
 
     const errorResponse = (error: Error) => {
       const durationMs = Date.now() - startTime;
-      logToolCall(this.config, {
+      logToolCall(session.config, {
         'event.name': 'tool_call',
         'event.timestamp': new Date().toISOString(),
         prompt_id: promptId,
@@ -313,7 +363,7 @@ class GeminiAgentServer {
       return errorResponse(new Error('Missing function name'));
     }
 
-    const toolRegistry: ToolRegistry = await this.config.getToolRegistry();
+    const toolRegistry: ToolRegistry = await session.config.getToolRegistry();
     const tool = toolRegistry.getTool(fc.name as string);
 
     if (!tool) {
@@ -392,7 +442,7 @@ class GeminiAgentServer {
       });
 
       const durationMs = Date.now() - startTime;
-      logToolCall(this.config, {
+      logToolCall(session.config, {
         'event.name': 'tool_call',
         'event.timestamp': new Date().toISOString(),
         function_name: fc.name,
@@ -447,15 +497,15 @@ class GeminiAgentServer {
     // }
 
     // // Get centralized file discovery service
-    // const fileDiscovery = this.config.getFileService();
-    // const respectGitIgnore = this.config.getFileFilteringRespectGitIgnore();
+    // const fileDiscovery = session.config.getFileService();
+    // const respectGitIgnore = session.config.getFileFilteringRespectGitIgnore();
 
     // const pathSpecsToRead: string[] = [];
     // const atPathToResolvedSpecMap = new Map<string, string>();
     // const contentLabelsForDisplay: string[] = [];
     // const ignoredPaths: string[] = [];
 
-    // const toolRegistry = await this.config.getToolRegistry();
+    // const toolRegistry = await session.config.getToolRegistry();
     // const readManyFilesTool = toolRegistry.getTool('read_many_files');
     // const globTool = toolRegistry.getTool('glob');
 
@@ -480,8 +530,8 @@ class GeminiAgentServer {
     //   let resolvedSuccessfully = false;
 
     //   try {
-    //     const absolutePath = path.resolve(this.config.getTargetDir(), pathName);
-    //     if (isWithinRoot(absolutePath, this.config.getTargetDir())) {
+    //     const absolutePath = path.resolve(session.config.getTargetDir(), pathName);
+    //     if (isWithinRoot(absolutePath, session.config.getTargetDir())) {
     //       const stats = await fs.stat(absolutePath);
     //       if (stats.isDirectory()) {
     //         currentPathSpec = pathName.endsWith('/')
@@ -503,7 +553,7 @@ class GeminiAgentServer {
     //     }
     //   } catch (error) {
     //     if (isNodeError(error) && error.code === 'ENOENT') {
-    //       if (this.config.getEnableRecursiveFileSearch() && globTool) {
+    //       if (session.config.getEnableRecursiveFileSearch() && globTool) {
     //         this.#debug(
     //           `Path ${pathName} not found directly, attempting glob search.`,
     //         );
@@ -511,7 +561,7 @@ class GeminiAgentServer {
     //           const globResult = await globTool.execute(
     //             {
     //               pattern: `**/*${pathName}*`,
-    //               path: this.config.getTargetDir(),
+    //               path: session.config.getTargetDir(),
     //             },
     //             abortSignal,
     //           );
@@ -525,7 +575,7 @@ class GeminiAgentServer {
     //             if (lines.length > 1 && lines[1]) {
     //               const firstMatchAbsolute = lines[1].trim();
     //               currentPathSpec = path.relative(
-    //                 this.config.getTargetDir(),
+    //                 session.config.getTargetDir(),
     //                 firstMatchAbsolute,
     //               );
     //               this.#debug(
@@ -688,12 +738,6 @@ class GeminiAgentServer {
     //   });
     //   throw error;
     // }
-  }
-
-  #debug(msg: string) {
-    if (this.config.getDebugMode()) {
-      console.warn(msg);
-    }
   }
 }
 
