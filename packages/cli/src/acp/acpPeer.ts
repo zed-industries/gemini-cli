@@ -11,8 +11,6 @@ import {
   logToolCall,
   ToolResult,
   convertToFunctionResponse,
-  // ToolCallConfirmationDetails,
-  // ToolConfirmationOutcome,
   isNodeError,
   getErrorMessage,
   isWithinRoot,
@@ -895,25 +893,3 @@ function toPermissionOptions(
     }
   }
 }
-
-// function toToolCallOutcome(
-//   outcome: acp.ToolCallConfirmationOutcome,
-// ): ToolConfirmationOutcome {
-//   switch (outcome) {
-//     case 'allow':
-//       return ToolConfirmationOutcome.ProceedOnce;
-//     case 'alwaysAllow':
-//       return ToolConfirmationOutcome.ProceedAlways;
-//     case 'alwaysAllowMcpServer':
-//       return ToolConfirmationOutcome.ProceedAlwaysServer;
-//     case 'alwaysAllowTool':
-//       return ToolConfirmationOutcome.ProceedAlwaysTool;
-//     case 'reject':
-//     case 'cancel':
-//       return ToolConfirmationOutcome.Cancel;
-//     default: {
-//       const unreachable: never = outcome;
-//       throw new Error(`Unexpected: ${unreachable}`);
-//     }
-//   }
-// }
