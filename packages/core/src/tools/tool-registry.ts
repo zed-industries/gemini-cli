@@ -387,6 +387,20 @@ export class ToolRegistry {
   getTool(name: string): Tool | undefined {
     return this.tools.get(name);
   }
+
+  /**
+   * Get the definition of a specific MCP tool.
+   */
+  getServerTool(serverName: string, toolName: string): Tool | undefined {
+    for (const tool of this.tools.values()) {
+      if (
+        (tool as DiscoveredMCPTool)?.serverName === serverName &&
+        tool.name === toolName
+      ) {
+        return tool;
+      }
+    }
+  }
 }
 
 /**

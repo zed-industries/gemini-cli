@@ -18,9 +18,11 @@ import {
   // isWithinRoot,
   getErrorStatus,
   MCPServerConfig,
-  qualifyMCPTool,
+  ToolConfirmationOutcome,
+  ToolCallConfirmationDetails,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
+import { z } from 'zod';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 import { Settings } from '../config/settings.js';
 // import * as fs from 'fs/promises';
@@ -31,6 +33,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { randomUUID } from 'crypto';
 import { Extension } from '../config/extension.js';
 import { CliArgs, loadCliConfig } from '../config/config.js';
+import { ClientTools } from './clientTools.js';
 
 export async function runAcpPeer(
   baseSettings: Settings,
@@ -48,7 +51,7 @@ export async function runAcpPeer(
 }
 
 interface Session {
-  clientTools: acp.ClientTools;
+  clientTools: ClientTools;
   chat: GeminiChat;
   config: Config;
   pendingSend?: AbortController;
@@ -101,38 +104,35 @@ class GeminiAgentServer {
     cwd: string,
     mcpServers: acp.McpServer[],
   ): Promise<Config> {
-    const mergedMcpServers = mcpServers.reduce(
-      (acc, { command, args, env: rawEnv, name }) => {
-        const env = rawEnv.reduce<Record<string, string>>(
-          (acc, { name, value }) => {
-            acc[name] = value;
-            return acc;
-          },
-          {},
-        );
-        acc[name] = new MCPServerConfig(command, args, env, cwd);
-        return acc;
-      },
-      { ...this.baseSettings.mcpServers },
-    );
-    const settings: Settings = {
-      ...this.baseSettings,
-      mcpServers: mergedMcpServers,
-    };
+    const settings: Settings = this.baseSettings;
     const config = await loadCliConfig(
-      settings,
+      this.baseSettings,
       this.extensions,
       sessionId,
       this.argv,
     );
+
+    const mergedMcpServers = { ...config.getMcpServers() };
+
+    for (const { command, args, env: rawEnv, name } of mcpServers) {
+      const env: Record<string, string> = {};
+      for (const { name: envName, value } of rawEnv) {
+        env[envName] = value;
+      }
+      mergedMcpServers[name] = new MCPServerConfig(command, args, env, cwd);
+    }
+
     config.update({
       cwd,
       sessionId,
       targetDir: cwd,
       model: config.getModel(),
       debugMode: config.getDebugMode(),
+      mcpServers: mergedMcpServers,
     });
+
     await config.initialize();
+
     if (settings.selectedAuthType) {
       try {
         await config.refreshAuth(settings.selectedAuthType);
@@ -142,6 +142,7 @@ class GeminiAgentServer {
         throw error;
       }
     }
+
     return config;
   }
 
@@ -156,7 +157,7 @@ class GeminiAgentServer {
     const chat = await geminiClient.startChat();
     const session = {
       chat,
-      clientTools,
+      clientTools: new ClientTools(clientTools, await config.getToolRegistry()),
       config,
     };
     this.#sessions.set(sessionId, session);
@@ -377,51 +378,62 @@ class GeminiAgentServer {
       args,
       abortSignal,
     );
-    if (confirmationDetails && session.clientTools.requestPermission) {
-      const permissionTool = toolRegistry.getTool(
-        qualifyMCPTool(
-          session.clientTools.requestPermission.mcpServer,
-          session.clientTools.requestPermission.toolName,
-        ),
-      );
 
-      // todo! confirmation
-      // let content: acp.ToolCallContent | null = null;
-      // if (confirmationDetails.type === 'edit') {
-      //   content = {
-      //     type: 'diff',
-      //     path: confirmationDetails.fileName,
-      //     oldText: confirmationDetails.originalContent,
-      //     newText: confirmationDetails.newContent,
-      //   };
-      // }
-      // const result = await this.client.requestToolCallConfirmation({
-      //   label: tool.getDescription(args),
-      //   icon: tool.icon,
-      //   content,
-      //   confirmation: toAcpToolCallConfirmation(confirmationDetails),
-      //   locations: tool.toolLocations(args),
-      // });
-      // await confirmationDetails.onConfirm(toToolCallOutcome(result.outcome));
-      // switch (result.outcome) {
-      //   case 'reject':
-      //     return errorResponse(
-      //       new Error(`Tool "${fc.name}" not allowed to run by the user.`),
-      //     );
-      //   case 'cancel':
-      //     return errorResponse(
-      //       new Error(`Tool "${fc.name}" was canceled by the user.`),
-      //     );
-      //   case 'allow':
-      //   case 'alwaysAllow':
-      //   case 'alwaysAllowMcpServer':
-      //   case 'alwaysAllowTool':
-      //     break;
-      //   default: {
-      //     const resultOutcome: never = result.outcome;
-      //     throw new Error(`Unexpected: ${resultOutcome}`);
-      //   }
-      // }
+    if (confirmationDetails && session.clientTools.requestPermission) {
+      const content: acp.ToolCallContent[] = [];
+
+      if (confirmationDetails.type === 'edit') {
+        content.push({
+          type: 'diff',
+          path: confirmationDetails.fileName,
+          oldText: confirmationDetails.originalContent,
+          newText: confirmationDetails.newContent,
+        });
+      }
+
+      const params: acp.RequestPermissionArguments = {
+        sessionId,
+        options: toPermissionOptions(confirmationDetails),
+        toolCall: {
+          toolCallId: callId,
+          status: 'pending',
+          label: tool.getDescription(args),
+          content,
+          locations: tool.toolLocations(args),
+          // todo!
+          kind: 'other',
+        },
+      };
+
+      const output = await session.clientTools.requestPermission.call(
+        params,
+        abortSignal,
+      );
+      const outcome =
+        output.outcome.outcome === 'canceled'
+          ? ToolConfirmationOutcome.Cancel
+          : z
+              .nativeEnum(ToolConfirmationOutcome)
+              .parse(output.outcome.optionId);
+
+      await confirmationDetails.onConfirm(outcome);
+
+      switch (outcome) {
+        case ToolConfirmationOutcome.Cancel:
+          return errorResponse(
+            new Error(`Tool "${fc.name}" was canceled by the user.`),
+          );
+        case ToolConfirmationOutcome.ProceedOnce:
+        case ToolConfirmationOutcome.ProceedAlways:
+        case ToolConfirmationOutcome.ProceedAlwaysServer:
+        case ToolConfirmationOutcome.ProceedAlwaysTool:
+        case ToolConfirmationOutcome.ModifyWithEditor:
+          break;
+        default: {
+          const resultOutcome: never = outcome;
+          throw new Error(`Unexpected: ${resultOutcome}`);
+        }
+      }
     } else {
       await this.#sendSessionUpdate(sessionId, {
         sessionUpdate: 'toolCall',
@@ -766,39 +778,93 @@ function toToolCallContent(toolResult: ToolResult): acp.ToolCallContent | null {
   }
 }
 
-// function toAcpToolCallConfirmation(
-//   confirmationDetails: ToolCallConfirmationDetails,
-// ): acp.ToolCallConfirmation {
-//   switch (confirmationDetails.type) {
-//     case 'edit':
-//       return { type: 'edit' };
-//     case 'exec':
-//       return {
-//         type: 'execute',
-//         rootCommand: confirmationDetails.rootCommand,
-//         command: confirmationDetails.command,
-//       };
-//     case 'mcp':
-//       return {
-//         type: 'mcp',
-//         serverName: confirmationDetails.serverName,
-//         toolName: confirmationDetails.toolName,
-//         toolDisplayName: confirmationDetails.toolDisplayName,
-//       };
-//     case 'info':
-//       return {
-//         type: 'fetch',
-//         urls: confirmationDetails.urls || [],
-//         description: confirmationDetails.urls?.length
-//           ? null
-//           : confirmationDetails.prompt,
-//       };
-//     default: {
-//       const unreachable: never = confirmationDetails;
-//       throw new Error(`Unexpected: ${unreachable}`);
-//     }
-//   }
-// }
+function toPermissionOptions(
+  confirmation: ToolCallConfirmationDetails,
+): acp.PermissionOption[] {
+  switch (confirmation.type) {
+    case 'edit':
+      return [
+        {
+          optionId: ToolConfirmationOutcome.ProceedAlways,
+          label: 'Allow All Edits',
+          kind: 'allowAlways',
+        },
+        {
+          optionId: ToolConfirmationOutcome.ProceedOnce,
+          label: 'Allow',
+          kind: 'allowOnce',
+        },
+        {
+          optionId: ToolConfirmationOutcome.Cancel,
+          label: 'Reject',
+          kind: 'rejectOnce',
+        },
+      ];
+    case 'exec':
+      return [
+        {
+          optionId: ToolConfirmationOutcome.ProceedAlways,
+          label: `Always Allow ${confirmation.rootCommand}`,
+          kind: 'allowAlways',
+        },
+        {
+          optionId: ToolConfirmationOutcome.ProceedOnce,
+          label: 'Allow',
+          kind: 'allowOnce',
+        },
+        {
+          optionId: ToolConfirmationOutcome.Cancel,
+          label: 'Reject',
+          kind: 'rejectOnce',
+        },
+      ];
+    case 'mcp':
+      return [
+        {
+          optionId: ToolConfirmationOutcome.ProceedAlwaysServer,
+          label: `Always Allow ${confirmation.serverName}`,
+          kind: 'allowAlways',
+        },
+        {
+          optionId: ToolConfirmationOutcome.ProceedAlwaysTool,
+          label: `Always Allow ${confirmation.toolName}`,
+          kind: 'allowAlways',
+        },
+        {
+          optionId: ToolConfirmationOutcome.ProceedOnce,
+          label: 'Allow',
+          kind: 'allowOnce',
+        },
+        {
+          optionId: ToolConfirmationOutcome.Cancel,
+          label: 'Reject',
+          kind: 'rejectOnce',
+        },
+      ];
+    case 'info':
+      return [
+        {
+          optionId: ToolConfirmationOutcome.ProceedAlways,
+          label: `Always Allow`,
+          kind: 'allowAlways',
+        },
+        {
+          optionId: ToolConfirmationOutcome.ProceedOnce,
+          label: 'Allow',
+          kind: 'allowOnce',
+        },
+        {
+          optionId: ToolConfirmationOutcome.Cancel,
+          label: 'Reject',
+          kind: 'rejectOnce',
+        },
+      ];
+    default: {
+      const unreachable: never = confirmation;
+      throw new Error(`Unexpected: ${unreachable}`);
+    }
+  }
+}
 
 // function toToolCallOutcome(
 //   outcome: acp.ToolCallConfirmationOutcome,

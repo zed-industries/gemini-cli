@@ -11,7 +11,9 @@ import * as generated from './zod.js';
 
 export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
 
-export type WriteTextFile = z.infer<typeof generated.writeTextFileSchema>;
+export type WriteTextFileArguments = z.infer<
+  typeof generated.writeTextFileArgumentsSchema
+>;
 
 export type ReadTextFileArguments = z.infer<
   typeof generated.readTextFileArgumentsSchema

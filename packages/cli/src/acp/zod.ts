@@ -10,7 +10,7 @@ export const newSessionOutputSchema = z.object({
   sessionId: z.string(),
 });
 
-export const writeTextFileSchema = z.object({
+export const writeTextFileArgumentsSchema = z.object({
   content: z.string(),
   path: z.string(),
   sessionId: z.string(),
@@ -265,7 +265,7 @@ export const agentClientProtocolSchema = z.union([
   sessionUpdateSchema,
   requestPermissionArgumentsSchema,
   requestPermissionOutputSchema,
-  writeTextFileSchema,
+  writeTextFileArgumentsSchema,
   readTextFileArgumentsSchema,
   readTextFileOutputSchema,
 ]);
