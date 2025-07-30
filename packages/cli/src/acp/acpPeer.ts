@@ -116,54 +116,51 @@ class GeminiAgentServer {
         return { content: [] };
       },
     );
+
+    this.#server.server.oninitialized = () => this.#refreshAgentState();
+  }
+
+  async #refreshAgentState() {
+    let needsAuthentication = true;
+    if (this.settings.merged.selectedAuthType) {
+      try {
+        await this.config.refreshAuth(this.settings.merged.selectedAuthType);
+        needsAuthentication = false;
+      } catch (error) {
+        console.error('Failed to refresh auth:', error);
+      }
+    }
+
+    const params: acp.AgentState = {
+      authMethods: [
+        {
+          id: AuthType.LOGIN_WITH_GOOGLE,
+          label: 'Log in with Google',
+          description: null,
+        },
+        {
+          id: AuthType.USE_GEMINI,
+          label: 'Use Gemini API key',
+          description: null,
+        },
+        {
+          id: AuthType.USE_VERTEX_AI,
+          label: 'Vertex AI',
+          description: null,
+        },
+      ],
+      needsAuthentication,
+    };
+
+    await this.#server.server.notification({
+      method: acp.AGENT_METHODS.agent_state,
+      params,
+    });
   }
 
   async connect() {
     const transport = new StdioServerTransport();
     await this.#server.connect(transport);
-
-    // todo! figure out when to send this
-    setTimeout(() => {
-      (async () => {
-        let needsAuthentication = true;
-        if (this.settings.merged.selectedAuthType) {
-          try {
-            await this.config.refreshAuth(
-              this.settings.merged.selectedAuthType,
-            );
-            needsAuthentication = false;
-          } catch (error) {
-            console.error('Failed to refresh auth:', error);
-          }
-        }
-
-        const params: acp.AgentState = {
-          authMethods: [
-            {
-              id: AuthType.LOGIN_WITH_GOOGLE,
-              label: 'Log in with Google',
-              description: null,
-            },
-            {
-              id: AuthType.USE_GEMINI,
-              label: 'Use Gemini API key',
-              description: null,
-            },
-            {
-              id: AuthType.USE_VERTEX_AI,
-              label: 'Vertex AI',
-              description: null,
-            },
-          ],
-          needsAuthentication,
-        };
-
-        await this.#server.server.notification({
-          method: acp.AGENT_METHODS.agent_state,
-          params,
-        });
-      })();
-    }, 500);
   }
 
   async authenticate({ methodId }: acp.AuthenticateArguments): Promise<void> {
