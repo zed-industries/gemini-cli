@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
-export * as zod from "./zod.js";
-import * as generated from "./zod.js";
+export * as zod from './zod.js';
+import * as generated from './zod.js';
 
 export type AuthenticateArguments = z.infer<
   typeof generated.authenticateArgumentsSchema
@@ -15,7 +15,9 @@ export type AuthenticateArguments = z.infer<
 
 export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
 
-export type WriteTextFileArguments = z.infer<typeof generated.writeTextFileArgumentsSchema>;
+export type WriteTextFileArguments = z.infer<
+  typeof generated.writeTextFileArgumentsSchema
+>;
 
 export type ReadTextFileArguments = z.infer<
   typeof generated.readTextFileArgumentsSchema
@@ -96,10 +98,10 @@ export type RequestPermissionArguments = z.infer<
 >;
 
 export const AGENT_METHODS = {
-  authenticate: "acp/authenticate",
-  new_session: "acp/new_session",
-  load_session: "acp/load_session",
-  prompt: "acp/prompt",
-  agent_state: "acp/agent_state",
-  session_update: "acp/session_update",
+  authenticate: 'acp/authenticate',
+  new_session: 'acp/new_session',
+  load_session: 'acp/load_session',
+  prompt: 'acp/prompt',
+  agent_state: 'acp/agent_state',
+  session_update: 'acp/session_update',
 };

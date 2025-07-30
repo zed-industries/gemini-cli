@@ -125,10 +125,12 @@ class GeminiAgentServer {
     // todo! figure out when to send this
     setTimeout(() => {
       (async () => {
-        let needsAuthentication = true
+        let needsAuthentication = true;
         if (this.settings.merged.selectedAuthType) {
           try {
-            await this.config.refreshAuth(this.settings.merged.selectedAuthType);
+            await this.config.refreshAuth(
+              this.settings.merged.selectedAuthType,
+            );
             needsAuthentication = false;
           } catch (error) {
             console.error('Failed to refresh auth:', error);
@@ -137,33 +139,39 @@ class GeminiAgentServer {
 
         const params: acp.AgentState = {
           authMethods: [
-            { id: AuthType.LOGIN_WITH_GOOGLE, label: "Log in with Google", description: null },
-            { id: AuthType.USE_GEMINI, label: "Use Gemini API key", description: null },
-            { id: AuthType.USE_VERTEX_AI, label: "Vertex AI", description: null },
+            {
+              id: AuthType.LOGIN_WITH_GOOGLE,
+              label: 'Log in with Google',
+              description: null,
+            },
+            {
+              id: AuthType.USE_GEMINI,
+              label: 'Use Gemini API key',
+              description: null,
+            },
+            {
+              id: AuthType.USE_VERTEX_AI,
+              label: 'Vertex AI',
+              description: null,
+            },
           ],
-          needsAuthentication
+          needsAuthentication,
         };
 
         await this.#server.server.notification({
           method: acp.AGENT_METHODS.agent_state,
-          params
+          params,
         });
       })();
     }, 500);
   }
 
-  async authenticate({
-    methodId
-  }: acp.AuthenticateArguments): Promise<void> {
+  async authenticate({ methodId }: acp.AuthenticateArguments): Promise<void> {
     const method = z.nativeEnum(AuthType).parse(methodId);
 
     await clearCachedCredentialFile();
     await this.config.refreshAuth(method);
-    this.settings.setValue(
-      SettingScope.User,
-      'selectedAuthType',
-      method
-    );
+    this.settings.setValue(SettingScope.User, 'selectedAuthType', method);
   }
 
   async newSession({
@@ -226,15 +234,6 @@ class GeminiAgentServer {
 
     return config;
   }
-
-  // async cancelSendMessage(): Promise<void> {
-  //   if (!this.pendingSend) {
-  //     throw new Error('Not currently generating');
-  //   }
-
-  //   this.pendingSend.abort();
-  //   delete this.pendingSend;
-  // }
 
   async prompt(params: acp.Prompt): Promise<void> {
     if (!this.#sessions.has(params.sessionId)) {
@@ -453,8 +452,8 @@ class GeminiAgentServer {
         output.outcome.outcome === 'canceled'
           ? ToolConfirmationOutcome.Cancel
           : z
-            .nativeEnum(ToolConfirmationOutcome)
-            .parse(output.outcome.optionId);
+              .nativeEnum(ToolConfirmationOutcome)
+              .parse(output.outcome.optionId);
 
       await confirmationDetails.onConfirm(outcome);
 
