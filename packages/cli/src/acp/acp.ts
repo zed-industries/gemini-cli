@@ -13,11 +13,7 @@ export type AuthenticateArguments = z.infer<
   typeof generated.authenticateArgumentsSchema
 >;
 
-export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
-
-export type WriteTextFileArguments = z.infer<
-  typeof generated.writeTextFileArgumentsSchema
->;
+export type WriteTextFile = z.infer<typeof generated.writeTextFileSchema>;
 
 export type ReadTextFileArguments = z.infer<
   typeof generated.readTextFileArgumentsSchema
@@ -53,11 +49,11 @@ export type RequestPermissionOutcome = z.infer<
   typeof generated.requestPermissionOutcomeSchema
 >;
 
-export type AuthMethod = z.infer<typeof generated.authMethodSchema>;
-
 export type McpToolId = z.infer<typeof generated.mcpToolIdSchema>;
 
 export type EnvVariable = z.infer<typeof generated.envVariableSchema>;
+
+export type AuthMethod = z.infer<typeof generated.authMethodSchema>;
 
 export type ClientTools = z.infer<typeof generated.clientToolsSchema>;
 
@@ -70,8 +66,6 @@ export type PermissionOption = z.infer<typeof generated.permissionOptionSchema>;
 export type RequestPermissionOutput = z.infer<
   typeof generated.requestPermissionOutputSchema
 >;
-
-export type AgentState = z.infer<typeof generated.agentStateSchema>;
 
 export type NewSessionArguments = z.infer<
   typeof generated.newSessionArgumentsSchema
@@ -87,9 +81,13 @@ export type ContentBlock = z.infer<typeof generated.contentBlockSchema>;
 
 export type ToolCallContent = z.infer<typeof generated.toolCallContentSchema>;
 
+export type AgentState = z.infer<typeof generated.agentStateSchema>;
+
 export type Prompt = z.infer<typeof generated.promptSchema>;
 
 export type ToolCall = z.infer<typeof generated.toolCallSchema>;
+
+export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
 
 export type SessionUpdate = z.infer<typeof generated.sessionUpdateSchema>;
 
@@ -97,11 +95,14 @@ export type RequestPermissionArguments = z.infer<
   typeof generated.requestPermissionArgumentsSchema
 >;
 
+export type AgentClientProtocol = z.infer<
+  typeof generated.agentClientProtocolSchema
+>;
+
 export const AGENT_METHODS = {
   authenticate: 'acp/authenticate',
   new_session: 'acp/new_session',
   load_session: 'acp/load_session',
   prompt: 'acp/prompt',
-  agent_state: 'acp/agent_state',
   session_update: 'acp/session_update',
 };

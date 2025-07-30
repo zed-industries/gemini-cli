@@ -23,7 +23,7 @@ export class ClientTools {
     acp.ReadTextFileOutput
   > | null;
 
-  writeTextFile: ClientTool<acp.WriteTextFileArguments> | null;
+  writeTextFile: ClientTool<acp.WriteTextFile> | null;
 
   constructor(tools: acp.ClientTools, registry: ToolRegistry) {
     this.#tools = tools;

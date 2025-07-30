@@ -82,7 +82,7 @@ class GeminiAgentServer {
   ) {
     this.#server = new McpServer({
       name: 'gemini-cli',
-      version: '1.0.0', // todo!
+      version: '1.0.0',
     });
 
     this.#server.registerTool(
@@ -118,50 +118,9 @@ class GeminiAgentServer {
     );
   }
 
-  async #refreshAgentState() {
-    let needsAuthentication = true;
-    if (this.settings.merged.selectedAuthType) {
-      try {
-        await this.config.refreshAuth(this.settings.merged.selectedAuthType);
-        needsAuthentication = false;
-      } catch (error) {
-        console.error('Failed to refresh auth:', error);
-      }
-    }
-
-    const params: acp.AgentState = {
-      authMethods: [
-        {
-          id: AuthType.LOGIN_WITH_GOOGLE,
-          label: 'Log in with Google',
-          description: null,
-        },
-        {
-          id: AuthType.USE_GEMINI,
-          label: 'Use Gemini API key',
-          description: null,
-        },
-        {
-          id: AuthType.USE_VERTEX_AI,
-          label: 'Vertex AI',
-          description: null,
-        },
-      ],
-      needsAuthentication,
-    };
-
-    await this.#server.server.notification({
-      method: acp.AGENT_METHODS.agent_state,
-      params,
-    });
-  }
-
   async connect() {
     const transport = new StdioServerTransport();
     await this.#server.connect(transport);
-    setTimeout(async () => {
-      await this.#refreshAgentState();
-    }, 500);
   }
 
   async authenticate({ methodId }: acp.AuthenticateArguments): Promise<void> {
@@ -177,9 +136,19 @@ class GeminiAgentServer {
     mcpServers,
     clientTools,
   }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
-    console.log('newsession');
     const sessionId = randomUUID();
     const config = await this.newSessionConfig(sessionId, cwd, mcpServers);
+
+    let needsAuthentication = true;
+    if (this.settings.merged.selectedAuthType) {
+      try {
+        await config.refreshAuth(this.settings.merged.selectedAuthType);
+        needsAuthentication = false;
+      } catch (e) {
+        console.error(`Authentication failed: ${e}`);
+      }
+    }
+
     const geminiClient = config.getGeminiClient();
     const chat = await geminiClient.startChat();
     const session = new Session(
@@ -191,6 +160,26 @@ class GeminiAgentServer {
 
     return {
       sessionId,
+      agentState: {
+        needsAuthentication,
+        authMethods: [
+          {
+            id: AuthType.LOGIN_WITH_GOOGLE,
+            label: 'Log in with Google',
+            description: null,
+          },
+          {
+            id: AuthType.USE_GEMINI,
+            label: 'Use Gemini API key',
+            description: null,
+          },
+          {
+            id: AuthType.USE_VERTEX_AI,
+            label: 'Vertex AI',
+            description: null,
+          },
+        ],
+      },
     };
   }
 
@@ -226,11 +215,6 @@ class GeminiAgentServer {
     });
 
     await config.initialize();
-
-    if (this.settings.merged.selectedAuthType) {
-      await config.refreshAuth(this.settings.merged.selectedAuthType);
-    }
-
     return config;
   }
 

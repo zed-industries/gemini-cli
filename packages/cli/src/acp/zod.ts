@@ -10,11 +10,7 @@ export const authenticateArgumentsSchema = z.object({
   methodId: z.string(),
 });
 
-export const newSessionOutputSchema = z.object({
-  sessionId: z.string(),
-});
-
-export const writeTextFileArgumentsSchema = z.object({
+export const writeTextFileSchema = z.object({
   content: z.string(),
   path: z.string(),
   sessionId: z.string(),
@@ -96,12 +92,6 @@ export const requestPermissionOutcomeSchema = z.union([
   }),
 ]);
 
-export const authMethodSchema = z.object({
-  description: z.string().nullable(),
-  id: z.string(),
-  label: z.string(),
-});
-
 export const mcpToolIdSchema = z.object({
   mcpServer: z.string(),
   toolName: z.string(),
@@ -110,6 +100,12 @@ export const mcpToolIdSchema = z.object({
 export const envVariableSchema = z.object({
   name: z.string(),
   value: z.string(),
+});
+
+export const authMethodSchema = z.object({
+  description: z.string().nullable(),
+  id: z.string(),
+  label: z.string(),
 });
 
 export const clientToolsSchema = z.object({
@@ -139,11 +135,6 @@ export const permissionOptionSchema = z.object({
 
 export const requestPermissionOutputSchema = z.object({
   outcome: requestPermissionOutcomeSchema,
-});
-
-export const agentStateSchema = z.object({
-  authMethods: z.array(authMethodSchema),
-  needsAuthentication: z.boolean(),
 });
 
 export const newSessionArgumentsSchema = z.object({
@@ -212,6 +203,11 @@ export const toolCallContentSchema = z.union([
   }),
 ]);
 
+export const agentStateSchema = z.object({
+  authMethods: z.array(authMethodSchema),
+  needsAuthentication: z.boolean(),
+});
+
 export const promptSchema = z.object({
   prompt: z.array(contentBlockSchema),
   sessionId: z.string(),
@@ -225,6 +221,11 @@ export const toolCallSchema = z.object({
   rawInput: z.unknown().optional(),
   status: toolCallStatusSchema,
   toolCallId: z.string(),
+});
+
+export const newSessionOutputSchema = z.object({
+  agentState: agentStateSchema,
+  sessionId: z.string(),
 });
 
 export const sessionUpdateSchema = z.union([
@@ -271,3 +272,17 @@ export const requestPermissionArgumentsSchema = z.object({
   sessionId: z.string(),
   toolCall: toolCallSchema,
 });
+
+export const agentClientProtocolSchema = z.union([
+  newSessionArgumentsSchema,
+  newSessionOutputSchema,
+  loadSessionSchema,
+  authenticateArgumentsSchema,
+  promptSchema,
+  sessionUpdateSchema,
+  requestPermissionArgumentsSchema,
+  requestPermissionOutputSchema,
+  writeTextFileSchema,
+  readTextFileArgumentsSchema,
+  readTextFileOutputSchema,
+]);
