@@ -182,7 +182,6 @@ class GeminiAgentServer {
     }
 
     const geminiClient = config.getGeminiClient();
-    console.error({ geminiClient });
     const chat = await geminiClient.startChat();
     const session = new Session(
       new ClientTools(clientTools, await config.getToolRegistry()),
