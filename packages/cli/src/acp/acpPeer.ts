@@ -99,12 +99,13 @@ class AgentServer {
       {
         inputSchema: acp.zod.promptSchema.shape,
       },
-      async (args) => {
+      async (args, { signal }) => {
         const session = this.sessions.get(args.sessionId);
         if (!session) {
           throw new Error('Session not found');
         }
-        await session.prompt(args);
+
+        await session.prompt(args, signal);
         return { content: [] };
       },
     );
@@ -214,20 +215,26 @@ class AgentServer {
 }
 
 class Session {
-  pendingSend?: AbortController;
+  private pendingPrompt: AbortController | null = null;
 
   constructor(
-    readonly id: string,
-    readonly clientTools: ClientTools,
-    readonly chat: GeminiChat,
-    readonly config: Config,
-    readonly server: McpServer,
+    private readonly id: string,
+    private readonly clientTools: ClientTools,
+    private readonly chat: GeminiChat,
+    private readonly config: Config,
+    private readonly server: McpServer,
   ) {}
 
-  async prompt(params: acp.Prompt): Promise<void> {
-    this.pendingSend?.abort();
+  async prompt(
+    params: acp.Prompt,
+    requestAbortSignal: AbortSignal,
+  ): Promise<void> {
+    this.pendingPrompt?.abort();
+
+    // Create a new AbortController so we can abort if `acp/prompt` again before we're done
     const pendingSend = new AbortController();
-    this.pendingSend = pendingSend;
+    requestAbortSignal.onabort = () => pendingSend.abort();
+    this.pendingPrompt = pendingSend;
 
     const promptId = Math.random().toString(16).slice(2);
     const chat = this.chat;
