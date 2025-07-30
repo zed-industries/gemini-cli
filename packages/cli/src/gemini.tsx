@@ -219,7 +219,7 @@ export async function main() {
     await getOauthClient(settings.merged.selectedAuthType, config);
   }
 
-  if (config.getExperimentalAcp()) {
+  if (config.getExperimentalMcp()) {
     return runAcpPeer(config, settings, extensions, argv);
   }
 
