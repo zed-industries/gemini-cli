@@ -10,7 +10,7 @@ import { FunctionResponse, PartListUnion } from '@google/genai';
 import * as acp from './acp.js';
 
 export class ClientTools {
-  #tools: acp.ClientTools;
+  toolIds: acp.ClientTools;
   #registry: ToolRegistry;
 
   requestPermission: ClientTool<
@@ -26,7 +26,7 @@ export class ClientTools {
   writeTextFile: ClientTool<acp.WriteTextFile> | null;
 
   constructor(tools: acp.ClientTools, registry: ToolRegistry) {
-    this.#tools = tools;
+    this.toolIds = tools;
     this.#registry = registry;
     this.requestPermission = this.#buildTool(
       'requestPermission',
@@ -43,7 +43,7 @@ export class ClientTools {
     name: keyof acp.ClientTools,
     outputSchema?: z.ZodType<Out>,
   ): ClientTool<In, Out extends null ? null : Out> | null {
-    const toolId = this.#tools[name];
+    const toolId = this.toolIds[name];
     if (!toolId) return null;
 
     const tool = this.#registry.getServerTool(

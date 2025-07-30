@@ -20,10 +20,17 @@ import {
   ToolCallConfirmationDetails,
   AuthType,
   clearCachedCredentialFile,
+  DiscoveredMCPTool,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 import { z } from 'zod';
-import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
+import {
+  Content,
+  Part,
+  FunctionCall,
+  PartListUnion,
+  FunctionDeclaration,
+} from '@google/genai';
 import { LoadedSettings, SettingScope } from '../config/settings.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -188,14 +195,7 @@ class GeminiAgentServer {
     cwd: string,
     mcpServers: acp.McpServer[],
   ): Promise<Config> {
-    const config = await loadCliConfig(
-      this.settings.merged,
-      this.extensions,
-      sessionId,
-      this.argv,
-    );
-
-    const mergedMcpServers = { ...config.getMcpServers() };
+    const mergedMcpServers = { ...this.settings.merged.mcpServers };
 
     for (const { command, args, env: rawEnv, name } of mcpServers) {
       const env: Record<string, string> = {};
@@ -205,14 +205,15 @@ class GeminiAgentServer {
       mergedMcpServers[name] = new MCPServerConfig(command, args, env, cwd);
     }
 
-    config.update({
-      cwd,
+    const settings = { ...this.settings.merged, mcpServers: mergedMcpServers };
+
+    const config = await loadCliConfig(
+      settings,
+      this.extensions,
       sessionId,
-      targetDir: cwd,
-      model: config.getModel(),
-      debugMode: config.getDebugMode(),
-      mcpServers: mergedMcpServers,
-    });
+      this.argv,
+      cwd,
+    );
 
     await config.initialize();
     return config;
@@ -242,6 +243,30 @@ class GeminiAgentServer {
 
     let nextMessage: Content | null = { role: 'user', parts };
 
+    const functionDeclarations: FunctionDeclaration[] = [];
+    const { readTextFile, writeTextFile, requestPermission } =
+      session.clientTools.toolIds;
+
+    for (const tool of toolRegistry.getAllTools()) {
+      const mcpTool = tool as DiscoveredMCPTool;
+
+      if ((mcpTool as DiscoveredMCPTool).serverName) {
+        // Filter out client tools so that the model doesn't reach for them directly
+        if (
+          (mcpTool.serverName === readTextFile?.mcpServer &&
+            mcpTool.serverToolName === readTextFile?.toolName) ||
+          (mcpTool.serverName === writeTextFile?.mcpServer &&
+            mcpTool.serverToolName === writeTextFile?.toolName) ||
+          (mcpTool.serverName === requestPermission?.mcpServer &&
+            mcpTool.serverToolName === requestPermission?.toolName)
+        ) {
+          continue;
+        }
+      }
+
+      functionDeclarations.push(tool.schema);
+    }
+
     while (nextMessage !== null) {
       if (pendingSend.signal.aborted) {
         chat.addHistory(nextMessage);
@@ -258,7 +283,7 @@ class GeminiAgentServer {
               abortSignal: pendingSend.signal,
               tools: [
                 {
-                  functionDeclarations: toolRegistry.getFunctionDeclarations(),
+                  functionDeclarations,
                 },
               ],
             },
