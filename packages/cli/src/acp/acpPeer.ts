@@ -116,8 +116,6 @@ class GeminiAgentServer {
         return { content: [] };
       },
     );
-
-    this.#server.server.oninitialized = () => this.#refreshAgentState();
   }
 
   async #refreshAgentState() {
@@ -161,6 +159,9 @@ class GeminiAgentServer {
   async connect() {
     const transport = new StdioServerTransport();
     await this.#server.connect(transport);
+    setTimeout(async () => {
+      await this.#refreshAgentState();
+    }, 500);
   }
 
   async authenticate({ methodId }: acp.AuthenticateArguments): Promise<void> {
@@ -176,6 +177,7 @@ class GeminiAgentServer {
     mcpServers,
     clientTools,
   }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
+    console.log('newsession');
     const sessionId = randomUUID();
     const config = await this.newSessionConfig(sessionId, cwd, mcpServers);
     const geminiClient = config.getGeminiClient();
