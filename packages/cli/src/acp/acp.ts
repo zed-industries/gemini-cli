@@ -4,16 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
-export * as zod from './zod.js';
-import * as generated from './zod.js';
+export * as zod from "./zod.js";
+import * as generated from "./zod.js";
+
+export type AuthenticateArguments = z.infer<
+  typeof generated.authenticateArgumentsSchema
+>;
 
 export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
 
-export type WriteTextFileArguments = z.infer<
-  typeof generated.writeTextFileArgumentsSchema
->;
+export type WriteTextFileArguments = z.infer<typeof generated.writeTextFileArgumentsSchema>;
 
 export type ReadTextFileArguments = z.infer<
   typeof generated.readTextFileArgumentsSchema
@@ -49,6 +51,8 @@ export type RequestPermissionOutcome = z.infer<
   typeof generated.requestPermissionOutcomeSchema
 >;
 
+export type AuthMethod = z.infer<typeof generated.authMethodSchema>;
+
 export type McpToolId = z.infer<typeof generated.mcpToolIdSchema>;
 
 export type EnvVariable = z.infer<typeof generated.envVariableSchema>;
@@ -64,6 +68,8 @@ export type PermissionOption = z.infer<typeof generated.permissionOptionSchema>;
 export type RequestPermissionOutput = z.infer<
   typeof generated.requestPermissionOutputSchema
 >;
+
+export type AgentState = z.infer<typeof generated.agentStateSchema>;
 
 export type NewSessionArguments = z.infer<
   typeof generated.newSessionArgumentsSchema
@@ -89,13 +95,11 @@ export type RequestPermissionArguments = z.infer<
   typeof generated.requestPermissionArgumentsSchema
 >;
 
-export type AgentClientProtocol = z.infer<
-  typeof generated.agentClientProtocolSchema
->;
-
 export const AGENT_METHODS = {
-  new_session: 'acp/new_session',
-  load_session: 'acp/load_session',
-  prompt: 'acp/prompt',
-  session_update: 'acp/session_update',
+  authenticate: "acp/authenticate",
+  new_session: "acp/new_session",
+  load_session: "acp/load_session",
+  prompt: "acp/prompt",
+  agent_state: "acp/agent_state",
+  session_update: "acp/session_update",
 };

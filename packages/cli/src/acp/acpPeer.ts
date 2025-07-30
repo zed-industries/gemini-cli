@@ -18,11 +18,13 @@ import {
   MCPServerConfig,
   ToolConfirmationOutcome,
   ToolCallConfirmationDetails,
+  AuthType,
+  clearCachedCredentialFile,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 import { z } from 'zod';
 import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
-import { Settings } from '../config/settings.js';
+import { LoadedSettings, SettingScope } from '../config/settings.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -34,7 +36,8 @@ import { CliArgs, loadCliConfig } from '../config/config.js';
 import { ClientTools } from './clientTools.js';
 
 export async function runAcpPeer(
-  baseSettings: Settings,
+  config: Config,
+  settings: LoadedSettings,
   extensions: Extension[],
   argv: CliArgs,
 ) {
@@ -44,7 +47,7 @@ export async function runAcpPeer(
   console.info = console.error;
   console.debug = console.error;
 
-  const server = new GeminiAgentServer(baseSettings, extensions, argv);
+  const server = new GeminiAgentServer(config, settings, extensions, argv);
   await server.connect();
 }
 
@@ -72,7 +75,8 @@ class GeminiAgentServer {
   #server: McpServer;
 
   constructor(
-    private baseSettings: Settings,
+    private config: Config,
+    private settings: LoadedSettings,
     private extensions: Extension[],
     private argv: CliArgs,
   ) {
@@ -81,6 +85,16 @@ class GeminiAgentServer {
       version: '1.0.0', // todo!
     });
 
+    this.#server.registerTool(
+      acp.AGENT_METHODS.authenticate,
+      {
+        inputSchema: acp.zod.authenticateArgumentsSchema.shape,
+      },
+      async (args) => {
+        await this.authenticate(args);
+        return { content: [] };
+      },
+    );
     this.#server.registerTool(
       acp.AGENT_METHODS.new_session,
       {
@@ -107,16 +121,79 @@ class GeminiAgentServer {
   async connect() {
     const transport = new StdioServerTransport();
     await this.#server.connect(transport);
+
+    // todo! figure out when to send this
+    setTimeout(() => {
+      (async () => {
+        let needsAuthentication = true
+        if (this.settings.merged.selectedAuthType) {
+          try {
+            await this.config.refreshAuth(this.settings.merged.selectedAuthType);
+            needsAuthentication = false;
+          } catch (error) {
+            console.error('Failed to refresh auth:', error);
+          }
+        }
+
+        const params: acp.AgentState = {
+          authMethods: [
+            { id: AuthType.LOGIN_WITH_GOOGLE, label: "Log in with Google", description: null },
+            { id: AuthType.USE_GEMINI, label: "Use Gemini API key", description: null },
+            { id: AuthType.USE_VERTEX_AI, label: "Vertex AI", description: null },
+          ],
+          needsAuthentication
+        };
+
+        await this.#server.server.notification({
+          method: acp.AGENT_METHODS.agent_state,
+          params
+        });
+      })();
+    }, 500);
   }
 
-  async newConfig(
+  async authenticate({
+    methodId
+  }: acp.AuthenticateArguments): Promise<void> {
+    const method = z.nativeEnum(AuthType).parse(methodId);
+
+    await clearCachedCredentialFile();
+    await this.config.refreshAuth(method);
+    this.settings.setValue(
+      SettingScope.User,
+      'selectedAuthType',
+      method
+    );
+  }
+
+  async newSession({
+    cwd,
+    mcpServers,
+    clientTools,
+  }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
+    const sessionId = randomUUID();
+    const config = await this.newSessionConfig(sessionId, cwd, mcpServers);
+    const geminiClient = config.getGeminiClient();
+    const chat = await geminiClient.startChat();
+    const session = new Session(
+      new ClientTools(clientTools, await config.getToolRegistry()),
+      chat,
+      config,
+    );
+    this.#sessions.set(sessionId, session);
+
+    return {
+      sessionId,
+    };
+  }
+
+  async newSessionConfig(
     sessionId: string,
     cwd: string,
     mcpServers: acp.McpServer[],
   ): Promise<Config> {
-    const settings: Settings = this.baseSettings;
     const config = await loadCliConfig(
-      this.baseSettings,
+      this.settings.merged,
       this.extensions,
       sessionId,
       this.argv,
@@ -143,62 +220,12 @@ class GeminiAgentServer {
 
     await config.initialize();
 
-    if (settings.selectedAuthType) {
-      try {
-        await config.refreshAuth(settings.selectedAuthType);
-      } catch (error) {
-        // todo! handle auth
-        console.error('Failed to refresh auth:', error);
-        throw error;
-      }
+    if (this.settings.merged.selectedAuthType) {
+      await config.refreshAuth(this.settings.merged.selectedAuthType);
     }
 
     return config;
   }
-
-  async newSession({
-    cwd,
-    mcpServers,
-    clientTools,
-  }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
-    const sessionId = randomUUID();
-    const config = await this.newConfig(sessionId, cwd, mcpServers);
-    const geminiClient = config.getGeminiClient();
-    const chat = await geminiClient.startChat();
-    const session = new Session(
-      new ClientTools(clientTools, await config.getToolRegistry()),
-      chat,
-      config,
-    );
-    this.#sessions.set(sessionId, session);
-
-    return {
-      sessionId,
-    };
-  }
-
-  // async initialize(_: acp.InitializeParams): Promise<acp.InitializeResponse> {
-  //   let isAuthenticated = false;
-  //   if (this.settings.merged.selectedAuthType) {
-  //     try {
-  //       await session.config.refreshAuth(this.settings.merged.selectedAuthType);
-  //       isAuthenticated = true;
-  //     } catch (error) {
-  //       console.error('Failed to refresh auth:', error);
-  //     }
-  //   }
-  //   return { protocolVersion: acp.LATEST_PROTOCOL_VERSION, isAuthenticated };
-  // }
-
-  // async authenticate(): Promise<void> {
-  //   await clearCachedCredentialFile();
-  //   await session.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
-  //   this.settings.setValue(
-  //     SettingScope.User,
-  //     'selectedAuthType',
-  //     AuthType.LOGIN_WITH_GOOGLE,
-  //   );
-  // }
 
   // async cancelSendMessage(): Promise<void> {
   //   if (!this.pendingSend) {
@@ -426,8 +453,8 @@ class GeminiAgentServer {
         output.outcome.outcome === 'canceled'
           ? ToolConfirmationOutcome.Cancel
           : z
-              .nativeEnum(ToolConfirmationOutcome)
-              .parse(output.outcome.optionId);
+            .nativeEnum(ToolConfirmationOutcome)
+            .parse(output.outcome.optionId);
 
       await confirmationDetails.onConfirm(outcome);
 
