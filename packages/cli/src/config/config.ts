@@ -20,7 +20,6 @@ import {
   TelemetryTarget,
   FileFilteringOptions,
   IdeClient,
-  ConfigParameters,
 } from '@google/gemini-cli-core';
 import { Settings } from './settings.js';
 

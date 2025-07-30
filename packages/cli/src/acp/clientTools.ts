@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import z from 'zod';
+import { z } from 'zod';
 import { Tool, ToolRegistry } from '@google/gemini-cli-core';
 import { FunctionResponse, PartListUnion } from '@google/genai';
 import * as acp from './acp.js';
