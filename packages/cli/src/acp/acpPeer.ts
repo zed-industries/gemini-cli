@@ -156,7 +156,33 @@ class GeminiAgentServer {
       }
     }
 
+    const authMethods = [
+      {
+        id: AuthType.LOGIN_WITH_GOOGLE,
+        label: 'Log in with Google',
+        description: null,
+      },
+      {
+        id: AuthType.USE_GEMINI,
+        label: 'Use Gemini API key',
+        description: null,
+      },
+      {
+        id: AuthType.USE_VERTEX_AI,
+        label: 'Vertex AI',
+        description: null,
+      },
+    ];
+
+    if (needsAuthentication) {
+      return {
+        sessionId: null,
+        authMethods,
+      };
+    }
+
     const geminiClient = config.getGeminiClient();
+    console.error({ geminiClient });
     const chat = await geminiClient.startChat();
     const session = new Session(
       new ClientTools(clientTools, await config.getToolRegistry()),
@@ -167,26 +193,7 @@ class GeminiAgentServer {
 
     return {
       sessionId,
-      agentState: {
-        needsAuthentication,
-        authMethods: [
-          {
-            id: AuthType.LOGIN_WITH_GOOGLE,
-            label: 'Log in with Google',
-            description: null,
-          },
-          {
-            id: AuthType.USE_GEMINI,
-            label: 'Use Gemini API key',
-            description: null,
-          },
-          {
-            id: AuthType.USE_VERTEX_AI,
-            label: 'Vertex AI',
-            description: null,
-          },
-        ],
-      },
+      authMethods,
     };
   }
 

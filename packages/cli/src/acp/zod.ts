@@ -143,6 +143,11 @@ export const newSessionArgumentsSchema = z.object({
   mcpServers: z.array(mcpServerSchema),
 });
 
+export const newSessionOutputSchema = z.object({
+  authMethods: z.array(authMethodSchema),
+  sessionId: z.string().nullable(),
+});
+
 export const loadSessionSchema = z.object({
   clientTools: clientToolsSchema,
   cwd: z.string(),
@@ -203,11 +208,6 @@ export const toolCallContentSchema = z.union([
   }),
 ]);
 
-export const agentStateSchema = z.object({
-  authMethods: z.array(authMethodSchema),
-  needsAuthentication: z.boolean(),
-});
-
 export const promptSchema = z.object({
   prompt: z.array(contentBlockSchema),
   sessionId: z.string(),
@@ -221,11 +221,6 @@ export const toolCallSchema = z.object({
   rawInput: z.unknown().optional(),
   status: toolCallStatusSchema,
   toolCallId: z.string(),
-});
-
-export const newSessionOutputSchema = z.object({
-  agentState: agentStateSchema,
-  sessionId: z.string(),
 });
 
 export const sessionUpdateSchema = z.union([

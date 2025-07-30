@@ -23,6 +23,8 @@ export type ReadTextFileOutput = z.infer<
   typeof generated.readTextFileOutputSchema
 >;
 
+export type AuthMethod = z.infer<typeof generated.authMethodSchema>;
+
 export type Role = z.infer<typeof generated.roleSchema>;
 
 export type TextResourceContents = z.infer<
@@ -53,8 +55,6 @@ export type McpToolId = z.infer<typeof generated.mcpToolIdSchema>;
 
 export type EnvVariable = z.infer<typeof generated.envVariableSchema>;
 
-export type AuthMethod = z.infer<typeof generated.authMethodSchema>;
-
 export type ClientTools = z.infer<typeof generated.clientToolsSchema>;
 
 export type McpServer = z.infer<typeof generated.mcpServerSchema>;
@@ -71,6 +71,8 @@ export type NewSessionArguments = z.infer<
   typeof generated.newSessionArgumentsSchema
 >;
 
+export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
+
 export type LoadSession = z.infer<typeof generated.loadSessionSchema>;
 
 export type EmbeddedResourceResource = z.infer<
@@ -81,13 +83,9 @@ export type ContentBlock = z.infer<typeof generated.contentBlockSchema>;
 
 export type ToolCallContent = z.infer<typeof generated.toolCallContentSchema>;
 
-export type AgentState = z.infer<typeof generated.agentStateSchema>;
-
 export type Prompt = z.infer<typeof generated.promptSchema>;
 
 export type ToolCall = z.infer<typeof generated.toolCallSchema>;
-
-export type NewSessionOutput = z.infer<typeof generated.newSessionOutputSchema>;
 
 export type SessionUpdate = z.infer<typeof generated.sessionUpdateSchema>;
 
