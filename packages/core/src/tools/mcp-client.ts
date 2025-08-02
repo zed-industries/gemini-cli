@@ -428,27 +428,35 @@ export async function discoverTools(
 
     const discoveredTools: DiscoveredMCPTool[] = [];
     for (const funcDecl of tool.functionDeclarations) {
-      if (!isEnabled(funcDecl, mcpServerName, mcpServerConfig)) {
-        continue;
+      try {
+        if (!isEnabled(funcDecl, mcpServerName, mcpServerConfig)) {
+          continue;
+        }
+
+        const parameters = funcDecl.parametersJsonSchema ?? {
+          type: 'object',
+          properties: {},
+        };
+        sanitizeParameters(parameters);
+        
+        discoveredTools.push(
+          new DiscoveredMCPTool(
+            mcpCallableTool,
+            mcpServerName,
+            funcDecl.name!,
+            funcDecl.description ?? '',
+            parameters,
+            mcpServerConfig.timeout ?? MCP_DEFAULT_TIMEOUT_MSEC,
+            mcpServerConfig.trust,
+          ),
+        );
+      } catch (error) {
+        console.error(
+          `Error discovering tool: '${
+            funcDecl.name
+          }' from MCP server '${mcpServerName}': ${(error as Error).message}`,
+        );
       }
-
-      const parameters = funcDecl.parametersJsonSchema ?? {
-        type: 'object',
-        properties: {},
-      };
-      sanitizeParameters(parameters);
-
-      discoveredTools.push(
-        new DiscoveredMCPTool(
-          mcpCallableTool,
-          mcpServerName,
-          funcDecl.name!,
-          funcDecl.description ?? '',
-          parameters,
-          mcpServerConfig.timeout ?? MCP_DEFAULT_TIMEOUT_MSEC,
-          mcpServerConfig.trust,
-        ),
-      );
     }
     return discoveredTools;
   } catch (error) {
