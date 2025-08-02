@@ -58,12 +58,6 @@ export type NewSessionResponse = z.infer<typeof newSessionResponseSchema>;
 
 export type PromptResponse = z.infer<typeof promptResponseSchema>;
 
-export type ToolCall1 = z.infer<typeof toolCall1Schema>;
-
-export type ToolCallUpdate = z.infer<typeof toolCallUpdateSchema>;
-
-export type Plan = z.infer<typeof planSchema>;
-
 export type PermissionOption = z.infer<typeof permissionOptionSchema>;
 
 export type ToolCallLocation = z.infer<typeof toolCallLocationSchema>;
@@ -213,17 +207,6 @@ export const newSessionResponseSchema = z.object({
 
 export const promptResponseSchema = z.null();
 
-export const toolCall1Schema = z.object({
-  sessionUpdate: z.literal("toolCall"),
-});
-
-export const toolCallUpdateSchema = z.object({
-  sessionUpdate: z.literal("toolCallUpdate"),
-});
-
-export const planSchema = z.object({
-  sessionUpdate: z.literal("plan"),
-});
 
 export const permissionOptionSchema = z.object({
   kind: permissionOptionKindSchema,
@@ -382,18 +365,31 @@ export const sessionNotificationSchema = z.union([
   z.object({
     content: contentBlockSchema,
     sessionUpdate: z.literal("userMessageChunk"),
+    sessionId: z.string(),
   }),
   z.object({
     content: contentBlockSchema,
     sessionUpdate: z.literal("agentMessageChunk"),
+    sessionId: z.string(),
   }),
   z.object({
     content: contentBlockSchema,
     sessionUpdate: z.literal("agentThoughtChunk"),
+    sessionId: z.string(),
   }),
-  toolCall1Schema,
-  toolCallUpdateSchema,
-  planSchema,
+  // todo! fix schema generation
+  z.object({
+    sessionUpdate: z.literal("toolCall"),
+    sessionId: z.string(),
+  }).passthrough(),
+  z.object({
+    sessionUpdate: z.literal("toolCallUpdate"),
+    sessionId: z.string(),
+  }).passthrough(),
+  z.object({
+    sessionUpdate: z.literal("plan"),
+    sessionId: z.string(),
+  }).passthrough(),
 ]);
 
 export const toolCallSchema = z.object({
