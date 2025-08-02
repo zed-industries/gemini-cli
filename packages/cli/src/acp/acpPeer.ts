@@ -20,7 +20,6 @@ import {
   ToolCallConfirmationDetails,
   AuthType,
   clearCachedCredentialFile,
-  DiscoveredMCPTool,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 import { z } from 'zod';
@@ -29,18 +28,15 @@ import {
   Part,
   FunctionCall,
   PartListUnion,
-  FunctionDeclaration,
 } from '@google/genai';
 import { LoadedSettings, SettingScope } from '../config/settings.js';
 import * as fs from 'fs/promises';
+import { Readable, Writable } from 'node:stream';
 import * as path from 'path';
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { randomUUID } from 'crypto';
 import { Extension } from '../config/extension.js';
 import { CliArgs, loadCliConfig } from '../config/config.js';
-import { ClientTools } from './clientTools.js';
 
 export async function runAcpPeer(
   config: Config,
@@ -48,100 +44,35 @@ export async function runAcpPeer(
   extensions: Extension[],
   argv: CliArgs,
 ) {
+  const stdout = Writable.toWeb(process.stdout) as WritableStream;
+  const stdin = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
+
   // Stdout is used to send messages to the client, so console.log/console.info
   // messages to stderr so that they don't interfere with ACP.
   console.log = console.error;
   console.info = console.error;
   console.debug = console.error;
 
-  const server = new AgentServer(config, settings, extensions, argv);
-  await server.connect();
+  new acp.AgentSideConnection(
+    (client: acp.Client) => new GeminiAgent(config, settings, extensions, argv, client),
+    stdout,
+    stdin,
+  );
 }
 
-class AgentServer {
+class GeminiAgent {
   private sessions: Map<string, Session> = new Map();
-  private server: McpServer;
 
   constructor(
     private config: Config,
     private settings: LoadedSettings,
     private extensions: Extension[],
     private argv: CliArgs,
+    private client: acp.Client,
   ) {
-    this.server = new McpServer({
-      name: 'gemini-cli',
-      version: '1.0.0',
-    });
-
-    this.server.registerTool(
-      acp.AGENT_METHODS.authenticate,
-      {
-        inputSchema: acp.zod.authenticateArgumentsSchema.shape,
-      },
-      async (args) => {
-        await this.authenticate(args);
-        return { content: [] };
-      },
-    );
-    this.server.registerTool(
-      acp.AGENT_METHODS.new_session,
-      {
-        inputSchema: acp.zod.newSessionArgumentsSchema.shape,
-        outputSchema: acp.zod.newSessionOutputSchema.shape,
-      },
-      async (args) => ({
-        content: [],
-        structuredContent: await this.newSession(args),
-      }),
-    );
-    this.server.registerTool(
-      acp.AGENT_METHODS.prompt,
-      {
-        inputSchema: acp.zod.promptSchema.shape,
-      },
-      async (args, { signal }) => {
-        const session = this.sessions.get(args.sessionId);
-        if (!session) {
-          throw new Error('Session not found');
-        }
-
-        await session.prompt(args, signal);
-        return { content: [] };
-      },
-    );
   }
 
-  async connect() {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-  }
-
-  async authenticate({ methodId }: acp.AuthenticateArguments): Promise<void> {
-    const method = z.nativeEnum(AuthType).parse(methodId);
-
-    await clearCachedCredentialFile();
-    await this.config.refreshAuth(method);
-    this.settings.setValue(SettingScope.User, 'selectedAuthType', method);
-  }
-
-  async newSession({
-    cwd,
-    mcpServers,
-    clientTools,
-  }: acp.NewSessionArguments): Promise<acp.NewSessionOutput> {
-    const sessionId = randomUUID();
-    const config = await this.newSessionConfig(sessionId, cwd, mcpServers);
-
-    let needsAuthentication = true;
-    if (this.settings.merged.selectedAuthType) {
-      try {
-        await config.refreshAuth(this.settings.merged.selectedAuthType);
-        needsAuthentication = false;
-      } catch (e) {
-        console.error(`Authentication failed: ${e}`);
-      }
-    }
-
+  async initialize(_args: acp.InitializeRequest): Promise<acp.InitializeResponse> {
     const authMethods = [
       {
         id: AuthType.LOGIN_WITH_GOOGLE,
@@ -160,10 +91,45 @@ class AgentServer {
       },
     ];
 
+    return {
+      protocolVersion: acp.PROTOCOL_VERSION,
+      authMethods,
+      agentCapabilities: {
+        loadSession: false
+      }
+    };
+  }
+
+
+  async authenticate({ methodId }: acp.AuthenticateRequest): Promise<void> {
+    const method = z.nativeEnum(AuthType).parse(methodId);
+
+    await clearCachedCredentialFile();
+    await this.config.refreshAuth(method);
+    this.settings.setValue(SettingScope.User, 'selectedAuthType', method);
+  }
+
+  async newSession({
+    cwd,
+    mcpServers,
+  }: acp.NewSessionRequest): Promise<acp.NewSessionResponse> {
+    const sessionId = randomUUID();
+    const config = await this.newSessionConfig(sessionId, cwd, mcpServers);
+
+    let needsAuthentication = true;
+    if (this.settings.merged.selectedAuthType) {
+      try {
+        await config.refreshAuth(this.settings.merged.selectedAuthType);
+        needsAuthentication = false;
+      } catch (e) {
+        console.error(`Authentication failed: ${e}`);
+      }
+    }
+
+
     if (needsAuthentication) {
       return {
         sessionId: null,
-        authMethods,
       };
     }
 
@@ -171,16 +137,14 @@ class AgentServer {
     const chat = await geminiClient.startChat();
     const session = new Session(
       sessionId,
-      new ClientTools(clientTools, await config.getToolRegistry()),
       chat,
       config,
-      this.server,
+      this.client,
     );
     this.sessions.set(sessionId, session);
 
     return {
       sessionId,
-      authMethods,
     };
   }
 
@@ -212,6 +176,22 @@ class AgentServer {
     await config.initialize();
     return config;
   }
+
+  async prompt(params: acp.PromptRequest): Promise<void> {
+    const session = this.sessions.get(params.sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${params.sessionId}`);
+    }
+    await session.prompt(params);
+  }
+
+  async cancelled(params: acp.CancelledNotification): Promise<void> {
+    const session = this.sessions.get(params.sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${params.sessionId}`);
+    }
+    await session.cancelPendingPrompt();
+  }
 }
 
 class Session {
@@ -219,21 +199,16 @@ class Session {
 
   constructor(
     private readonly id: string,
-    private readonly clientTools: ClientTools,
     private readonly chat: GeminiChat,
     private readonly config: Config,
-    private readonly server: McpServer,
-  ) {}
+    private readonly client: acp.Client,
+  ) { }
 
   async prompt(
-    params: acp.Prompt,
-    requestAbortSignal: AbortSignal,
+    params: acp.PromptRequest,
   ): Promise<void> {
     this.pendingPrompt?.abort();
-
-    // Create a new AbortController so we can abort if `acp/prompt` again before we're done
     const pendingSend = new AbortController();
-    requestAbortSignal.onabort = () => pendingSend.abort();
     this.pendingPrompt = pendingSend;
 
     const promptId = Math.random().toString(16).slice(2);
@@ -243,30 +218,6 @@ class Session {
     const parts = await this.#resolvePrompt(params.prompt, pendingSend.signal);
 
     let nextMessage: Content | null = { role: 'user', parts };
-
-    const functionDeclarations: FunctionDeclaration[] = [];
-    const { readTextFile, writeTextFile, requestPermission } =
-      this.clientTools.toolIds;
-
-    for (const tool of toolRegistry.getAllTools()) {
-      const mcpTool = tool as DiscoveredMCPTool;
-
-      if ((mcpTool as DiscoveredMCPTool).serverName) {
-        // Filter out client tools so that the model doesn't reach for them directly
-        if (
-          (mcpTool.serverName === readTextFile?.mcpServer &&
-            mcpTool.serverToolName === readTextFile?.toolName) ||
-          (mcpTool.serverName === writeTextFile?.mcpServer &&
-            mcpTool.serverToolName === writeTextFile?.toolName) ||
-          (mcpTool.serverName === requestPermission?.mcpServer &&
-            mcpTool.serverToolName === requestPermission?.toolName)
-        ) {
-          continue;
-        }
-      }
-
-      functionDeclarations.push(tool.schema);
-    }
 
     while (nextMessage !== null) {
       if (pendingSend.signal.aborted) {
@@ -284,7 +235,7 @@ class Session {
               abortSignal: pendingSend.signal,
               tools: [
                 {
-                  functionDeclarations,
+                  functionDeclarations: toolRegistry.getFunctionDeclarations(),
                 },
               ],
             },
@@ -354,16 +305,17 @@ class Session {
     }
   }
 
+  async cancelPendingPrompt(): Promise<void> {
+    this.pendingPrompt?.abort();
+  }
+
   private async sendUpdate(update: acp.SessionUpdate): Promise<void> {
     const params = {
       sessionId: this.id,
       ...update,
     };
 
-    this.server.server.notification({
-      method: acp.AGENT_METHODS.session_update,
-      params,
-    });
+    await this.client.sessionUpdate(params);
   }
 
   private async runTool(
@@ -418,7 +370,7 @@ class Session {
       abortSignal,
     );
 
-    if (confirmationDetails && this.clientTools.requestPermission) {
+    if (confirmationDetails) {
       const content: acp.ToolCallContent[] = [];
 
       if (confirmationDetails.type === 'edit') {
@@ -430,7 +382,7 @@ class Session {
         });
       }
 
-      const params: acp.RequestPermissionArguments = {
+      const params: acp.RequestPermissionRequest = {
         sessionId: this.id,
         options: toPermissionOptions(confirmationDetails),
         toolCall: {
@@ -443,16 +395,13 @@ class Session {
         },
       };
 
-      const output = await this.clientTools.requestPermission.call(
-        params,
-        abortSignal,
-      );
+      const output = await this.client.requestPermission(params);
       const outcome =
-        output.outcome.outcome === 'canceled'
+        output.outcome.outcome === 'cancelled'
           ? ToolConfirmationOutcome.Cancel
           : z
-              .nativeEnum(ToolConfirmationOutcome)
-              .parse(output.outcome.optionId);
+            .nativeEnum(ToolConfirmationOutcome)
+            .parse(output.outcome.optionId);
 
       await confirmationDetails.onConfirm(outcome);
 
