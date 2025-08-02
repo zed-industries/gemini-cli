@@ -96,13 +96,12 @@ export function setupUnhandledRejectionHandler() {
 This is an unexpected error. Please file a bug report using the /bug tool.
 CRITICAL: Unhandled Promise Rejection!
 =========================================
-Reason: ${reason}${
-      reason instanceof Error && reason.stack
+Reason: ${reason}${reason instanceof Error && reason.stack
         ? `
 Stack trace:
 ${reason.stack}`
         : ''
-    }`;
+      }`;
     appEvents.emit(AppEvent.LogError, errorMessage);
     if (!unhandledRejectionOccurred) {
       unhandledRejectionOccurred = true;
@@ -219,7 +218,7 @@ export async function main() {
     await getOauthClient(settings.merged.selectedAuthType, config);
   }
 
-  if (config.getExperimentalMcp()) {
+  if (config.getexperimentalAcp()) {
     return runAcpPeer(config, settings, extensions, argv);
   }
 

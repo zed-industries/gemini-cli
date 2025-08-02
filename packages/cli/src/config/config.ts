@@ -56,7 +56,7 @@ export interface CliArgs {
   telemetryLogPrompts: boolean | undefined;
   telemetryOutfile: string | undefined;
   allowedMcpServerNames: string[] | undefined;
-  experimentalMcp: boolean | undefined;
+  experimentalAcp: boolean | undefined;
   extensions: string[] | undefined;
   listExtensions: boolean | undefined;
   ideMode: boolean | undefined;
@@ -169,7 +169,7 @@ export async function parseArguments(): Promise<CliArgs> {
       description: 'Enables checkpointing of file edits',
       default: false,
     })
-    .option('experimental-mcp', {
+    .option('experimental-acp', {
       type: 'boolean',
       description:
         '(Experimental) Starts an MCP server over Standard I/O that can be used to access the agent',
@@ -418,7 +418,7 @@ export async function loadCliConfig(
     model: argv.model!,
     extensionContextFilePaths,
     maxSessionTurns: settings.maxSessionTurns ?? -1,
-    experimentalMcp: argv.experimentalMcp || false,
+    experimentalAcp: argv.experimentalAcp || false,
     listExtensions: argv.listExtensions || false,
     extensions: allExtensions,
     blockedMcpServers,
