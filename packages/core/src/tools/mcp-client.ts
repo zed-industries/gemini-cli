@@ -27,7 +27,7 @@ import { GoogleCredentialProvider } from '../mcp/google-auth-provider.js';
 import { DiscoveredMCPTool } from './mcp-tool.js';
 
 import { FunctionDeclaration, mcpToTool } from '@google/genai';
-import { sanitizeParameters, ToolRegistry } from './tool-registry.js';
+import { ToolRegistry } from './tool-registry.js';
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { MCPOAuthProvider } from '../mcp/oauth-provider.js';
 import { OAuthUtils } from '../mcp/oauth-utils.js';
@@ -433,19 +433,13 @@ export async function discoverTools(
           continue;
         }
 
-        const parameters = funcDecl.parametersJsonSchema ?? {
-          type: 'object',
-          properties: {},
-        };
-        sanitizeParameters(parameters);
-
         discoveredTools.push(
           new DiscoveredMCPTool(
             mcpCallableTool,
             mcpServerName,
             funcDecl.name!,
             funcDecl.description ?? '',
-            parameters,
+            funcDecl.parametersJsonSchema ?? { type: 'object', properties: {} },
             mcpServerConfig.timeout ?? MCP_DEFAULT_TIMEOUT_MSEC,
             mcpServerConfig.trust,
           ),
