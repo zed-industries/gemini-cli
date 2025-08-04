@@ -151,31 +151,19 @@ class Connection {
   async #receive(output: ReadableStream<Uint8Array>) {
     let content = '';
     const decoder = new TextDecoder();
-    const reader = output.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = value;
-        content += decoder.decode(chunk, { stream: true });
-        const lines = content.split('\n');
-        content = lines.pop() || '';
+    for await (const chunk of output) {
+      content += decoder.decode(chunk, { stream: true });
+      const lines = content.split('\n');
+      content = lines.pop() || '';
 
-        for (const line of lines) {
-          const trimmedLine = line.trim();
+      for (const line of lines) {
+        const trimmedLine = line.trim();
 
-          if (trimmedLine) {
-            try {
-              const message = JSON.parse(trimmedLine);
-              await this.#processMessage(message);
-            } catch (error) {
-              console.error('Failed to parse message:', error);
-            }
-          }
+        if (trimmedLine) {
+          const message = JSON.parse(trimmedLine);
+          this.#processMessage(message);
         }
       }
-    } finally {
-      reader.releaseLock();
     }
   }
 
