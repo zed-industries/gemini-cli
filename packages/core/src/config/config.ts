@@ -123,7 +123,7 @@ export class MCPServerConfig {
     // OAuth configuration
     readonly oauth?: MCPOAuthConfig,
     readonly authProviderType?: AuthProviderType,
-  ) { }
+  ) {}
 }
 
 export enum AuthProviderType {

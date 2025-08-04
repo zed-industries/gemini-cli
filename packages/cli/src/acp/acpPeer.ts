@@ -67,7 +67,7 @@ class GeminiAgent {
     private extensions: Extension[],
     private argv: CliArgs,
     private client: acp.Client,
-  ) { }
+  ) {}
 
   async initialize(
     _args: acp.InitializeRequest,
@@ -194,7 +194,7 @@ class Session {
     private readonly chat: GeminiChat,
     private readonly config: Config,
     private readonly client: acp.Client,
-  ) { }
+  ) {}
 
   async cancelPendingPrompt(): Promise<void> {
     if (!this.pendingPrompt) {
@@ -397,8 +397,8 @@ class Session {
         output.outcome.outcome === 'cancelled'
           ? ToolConfirmationOutcome.Cancel
           : z
-            .nativeEnum(ToolConfirmationOutcome)
-            .parse(output.outcome.optionId);
+              .nativeEnum(ToolConfirmationOutcome)
+              .parse(output.outcome.optionId);
 
       await confirmationDetails.onConfirm(outcome);
 
