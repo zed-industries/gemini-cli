@@ -309,12 +309,10 @@ class Session {
     this.pendingPrompt?.abort();
   }
 
-  // todo!
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async sendUpdate(update: any): Promise<void> {
+  private async sendUpdate(update: acp.SessionUpdate): Promise<void> {
     const params: acp.SessionNotification = {
       sessionId: this.id,
-      ...update,
+      update
     };
 
     await this.client.sessionUpdate(params);
