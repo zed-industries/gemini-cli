@@ -438,7 +438,7 @@ export async function discoverTools(
           properties: {},
         };
         sanitizeParameters(parameters);
-        
+
         discoveredTools.push(
           new DiscoveredMCPTool(
             mcpCallableTool,

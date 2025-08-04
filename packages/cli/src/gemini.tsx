@@ -244,7 +244,7 @@ export async function main() {
     await getOauthClient(settings.merged.selectedAuthType, config);
   }
 
-  if (config.getexperimentalAcp()) {
+  if (config.getExperimentalAcp()) {
     return runAcpPeer(config, settings, extensions, argv);
   }
 

@@ -4,35 +4,32 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { WritableStream, ReadableStream } from 'node:stream/web';
+
 import {
+  AuthType,
   Config,
   GeminiChat,
   ToolRegistry,
   logToolCall,
   ToolResult,
   convertToFunctionResponse,
+  ToolCallConfirmationDetails,
+  ToolConfirmationOutcome,
+  clearCachedCredentialFile,
   isNodeError,
   getErrorMessage,
   isWithinRoot,
   getErrorStatus,
   MCPServerConfig,
-  ToolConfirmationOutcome,
-  ToolCallConfirmationDetails,
-  AuthType,
-  clearCachedCredentialFile,
 } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
-import { z } from 'zod';
-import {
-  Content,
-  Part,
-  FunctionCall,
-  PartListUnion,
-} from '@google/genai';
+import { Readable, Writable } from 'node:stream';
+import { Content, Part, FunctionCall, PartListUnion } from '@google/genai';
 import { LoadedSettings, SettingScope } from '../config/settings.js';
 import * as fs from 'fs/promises';
-import { Readable, Writable } from 'node:stream';
 import * as path from 'path';
+import { z } from 'zod';
 
 import { randomUUID } from 'crypto';
 import { Extension } from '../config/extension.js';
@@ -54,7 +51,8 @@ export async function runAcpPeer(
   console.debug = console.error;
 
   new acp.AgentSideConnection(
-    (client: acp.Client) => new GeminiAgent(config, settings, extensions, argv, client),
+    (client: acp.Client) =>
+      new GeminiAgent(config, settings, extensions, argv, client),
     stdout,
     stdin,
   );
@@ -69,10 +67,11 @@ class GeminiAgent {
     private extensions: Extension[],
     private argv: CliArgs,
     private client: acp.Client,
-  ) {
-  }
+  ) { }
 
-  async initialize(_args: acp.InitializeRequest): Promise<acp.InitializeResponse> {
+  async initialize(
+    _args: acp.InitializeRequest,
+  ): Promise<acp.InitializeResponse> {
     const authMethods = [
       {
         id: AuthType.LOGIN_WITH_GOOGLE,
@@ -95,11 +94,10 @@ class GeminiAgent {
       protocolVersion: acp.PROTOCOL_VERSION,
       authMethods,
       agentCapabilities: {
-        loadSession: false
-      }
+        loadSession: false,
+      },
     };
   }
-
 
   async authenticate({ methodId }: acp.AuthenticateRequest): Promise<void> {
     const method = z.nativeEnum(AuthType).parse(methodId);
@@ -126,7 +124,6 @@ class GeminiAgent {
       }
     }
 
-
     if (needsAuthentication) {
       return {
         sessionId: null,
@@ -135,12 +132,7 @@ class GeminiAgent {
 
     const geminiClient = config.getGeminiClient();
     const chat = await geminiClient.startChat();
-    const session = new Session(
-      sessionId,
-      chat,
-      config,
-      this.client,
-    );
+    const session = new Session(sessionId, chat, config, this.client);
     this.sessions.set(sessionId, session);
 
     return {
@@ -177,20 +169,20 @@ class GeminiAgent {
     return config;
   }
 
-  async prompt(params: acp.PromptRequest): Promise<void> {
-    const session = this.sessions.get(params.sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${params.sessionId}`);
-    }
-    await session.prompt(params);
-  }
-
   async cancelled(params: acp.CancelledNotification): Promise<void> {
     const session = this.sessions.get(params.sessionId);
     if (!session) {
       throw new Error(`Session not found: ${params.sessionId}`);
     }
     await session.cancelPendingPrompt();
+  }
+
+  async prompt(params: acp.PromptRequest): Promise<void> {
+    const session = this.sessions.get(params.sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${params.sessionId}`);
+    }
+    await session.prompt(params);
   }
 }
 
@@ -204,9 +196,16 @@ class Session {
     private readonly client: acp.Client,
   ) { }
 
-  async prompt(
-    params: acp.PromptRequest,
-  ): Promise<void> {
+  async cancelPendingPrompt(): Promise<void> {
+    if (!this.pendingPrompt) {
+      throw new Error('Not currently generating');
+    }
+
+    this.pendingPrompt.abort();
+    this.pendingPrompt = null;
+  }
+
+  async prompt(params: acp.PromptRequest): Promise<void> {
     this.pendingPrompt?.abort();
     const pendingSend = new AbortController();
     this.pendingPrompt = pendingSend;
@@ -276,8 +275,10 @@ class Session {
         }
       } catch (error) {
         if (getErrorStatus(error) === 429) {
-          // todo! send tagged error?
-          throw new Error('Rate limit exceeded. Try again later.');
+          throw new acp.RequestError(
+            429,
+            'Rate limit exceeded. Try again later.',
+          );
         }
 
         throw error;
@@ -305,14 +306,10 @@ class Session {
     }
   }
 
-  async cancelPendingPrompt(): Promise<void> {
-    this.pendingPrompt?.abort();
-  }
-
   private async sendUpdate(update: acp.SessionUpdate): Promise<void> {
     const params: acp.SessionNotification = {
       sessionId: this.id,
-      update
+      update,
     };
 
     await this.client.sessionUpdate(params);

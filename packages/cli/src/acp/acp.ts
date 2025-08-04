@@ -4,38 +4,118 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { z } from "zod";
-import * as schema from "./schema.js";
+import { z } from 'zod';
+import * as schema from './schema.js';
+export * from './schema.js';
 
-export * from "./schema.js";
+import { WritableStream, ReadableStream } from 'node:stream/web';
+
+export class AgentSideConnection implements Client {
+  #connection: Connection;
+
+  constructor(
+    toAgent: (conn: AgentSideConnection) => Agent,
+    input: WritableStream<Uint8Array>,
+    output: ReadableStream<Uint8Array>,
+  ) {
+    const agent = toAgent(this);
+
+    // Handler function for agent methods
+    const handler = async (
+      method: string,
+      params: unknown,
+    ): Promise<unknown> => {
+      switch (method) {
+        case schema.AGENT_METHODS.initialize: {
+          const validatedParams = schema.initializeRequestSchema.parse(params);
+          return agent.initialize(validatedParams);
+        }
+        case schema.AGENT_METHODS.session_new: {
+          const validatedParams = schema.newSessionRequestSchema.parse(params);
+          return agent.newSession(validatedParams);
+        }
+        case schema.AGENT_METHODS.session_load: {
+          if (!agent.loadSession) {
+            throw RequestError.methodNotFound();
+          }
+          const validatedParams = schema.loadSessionRequestSchema.parse(params);
+          return agent.loadSession(validatedParams);
+        }
+        case schema.AGENT_METHODS.authenticate: {
+          const validatedParams =
+            schema.authenticateRequestSchema.parse(params);
+          return agent.authenticate(validatedParams);
+        }
+        case schema.AGENT_METHODS.session_prompt: {
+          const validatedParams = schema.promptRequestSchema.parse(params);
+          return agent.prompt(validatedParams);
+        }
+        case schema.AGENT_METHODS.session_cancelled: {
+          const validatedParams =
+            schema.cancelledNotificationSchema.parse(params);
+          return agent.cancelled(validatedParams);
+        }
+        default:
+          throw RequestError.methodNotFound(method);
+      }
+    };
+
+    this.#connection = new Connection(handler, input, output);
+  }
+
+  /**
+   * Streams new content to the client including text, tool calls, etc.
+   */
+  async sessionUpdate(params: schema.SessionNotification): Promise<void> {
+    return await this.#connection.sendNotification(
+      schema.CLIENT_METHODS.session_update,
+      params,
+    );
+  }
+
+  /**
+   * Request permission before running a tool
+   *
+   * The agent specifies a series of permission options with different granularity,
+   * and the client returns the chosen one.
+   */
+  async requestPermission(
+    params: schema.RequestPermissionRequest,
+  ): Promise<schema.RequestPermissionResponse> {
+    return await this.#connection.sendRequest(
+      schema.CLIENT_METHODS.session_request_permission,
+      params,
+    );
+  }
+}
 
 type AnyMessage = AnyRequest | AnyResponse | AnyNotification;
 
 type AnyRequest = {
-  jsonrpc: "2.0";
+  jsonrpc: '2.0';
   id: string | number;
   method: string;
   params?: unknown;
 };
 
 type AnyResponse = {
-  jsonrpc: "2.0";
+  jsonrpc: '2.0';
   id: string | number;
 } & Result<unknown>;
 
 type AnyNotification = {
-  jsonrpc: "2.0";
+  jsonrpc: '2.0';
   method: string;
   params?: unknown;
 };
 
 type Result<T> =
   | {
-    result: T;
-  }
+      result: T;
+    }
   | {
-    error: ErrorResponse;
-  };
+      error: ErrorResponse;
+    };
 
 type ErrorResponse = {
   code: number;
@@ -48,32 +128,29 @@ type PendingResponse = {
   reject: (error: ErrorResponse) => void;
 };
 
-type MethodConfig = {
-  handler: (params: any) => Promise<any>;
-  schema?: z.ZodType<any>;
-};
+type MethodHandler = (method: string, params: unknown) => Promise<unknown>;
 
 class Connection {
   #pendingResponses: Map<string | number, PendingResponse> = new Map();
   #nextRequestId: number = 0;
-  #methods: Map<string, MethodConfig>;
+  #handler: MethodHandler;
   #peerInput: WritableStream<Uint8Array>;
   #writeQueue: Promise<void> = Promise.resolve();
   #textEncoder: TextEncoder;
 
   constructor(
-    methods: Map<string, MethodConfig>,
+    handler: MethodHandler,
     peerInput: WritableStream<Uint8Array>,
     peerOutput: ReadableStream<Uint8Array>,
   ) {
+    this.#handler = handler;
     this.#peerInput = peerInput;
     this.#textEncoder = new TextEncoder();
-    this.#methods = methods;
     this.#receive(peerOutput);
   }
 
   async #receive(output: ReadableStream<Uint8Array>) {
-    let content = "";
+    let content = '';
     const decoder = new TextDecoder();
     const reader = output.getReader();
     try {
@@ -82,8 +159,8 @@ class Connection {
         if (done) break;
         const chunk = value;
         content += decoder.decode(chunk, { stream: true });
-        const lines = content.split("\n");
-        content = lines.pop() || "";
+        const lines = content.split('\n');
+        content = lines.pop() || '';
 
         for (const line of lines) {
           const trimmedLine = line.trim();
@@ -93,7 +170,7 @@ class Connection {
               const message = JSON.parse(trimmedLine);
               await this.#processMessage(message);
             } catch (error) {
-              console.error("Failed to parse message:", error);
+              console.error('Failed to parse message:', error);
             }
           }
         }
@@ -104,61 +181,43 @@ class Connection {
   }
 
   async #processMessage(message: AnyMessage) {
-    if ("method" in message && "id" in message) {
+    if ('method' in message && 'id' in message) {
       // It's a request
-      let response = await this.#tryCallDelegateMethod(
+      const response = await this.#tryCallHandler(
         message.method,
         message.params,
       );
 
       await this.#sendMessage({
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         id: message.id,
         ...response,
       });
-    } else if ("method" in message && !("id" in message)) {
+    } else if ('method' in message) {
       // It's a notification
-      await this.#tryCallDelegateMethod(message.method, message.params);
-    } else if ("id" in message) {
+      await this.#tryCallHandler(message.method, message.params);
+    } else if ('id' in message) {
       // It's a response
       this.#handleResponse(message as AnyResponse);
     }
   }
 
-  async #tryCallDelegateMethod(
+  async #tryCallHandler(
     method: string,
     params?: unknown,
   ): Promise<Result<unknown>> {
-    const methodConfig = this.#methods.get(method);
-    if (!methodConfig) {
-      return {
-        error: { code: -32601, message: `Method not found - '${method}'` },
-      };
-    }
-
     try {
-      let validatedParams = params;
-
-      // Validate params if we have a schema for this method
-      if (methodConfig.schema) {
-        const parseResult = methodConfig.schema.safeParse(params);
-        if (!parseResult.success) {
-          return {
-            error: {
-              code: -32602,
-              message: "Invalid params",
-              data: parseResult.error.format(),
-            },
-          };
-        }
-        validatedParams = parseResult.data;
-      }
-
-      const result = await methodConfig.handler(validatedParams);
+      const result = await this.#handler(method, params);
       return { result: result ?? null };
     } catch (error: unknown) {
       if (error instanceof RequestError) {
         return error.toResult();
+      }
+
+      if (error instanceof z.ZodError) {
+        return RequestError.invalidParams(
+          JSON.stringify(error.format(), undefined, 2),
+        ).toResult();
       }
 
       let details;
@@ -166,10 +225,10 @@ class Connection {
       if (error instanceof Error) {
         details = error.message;
       } else if (
-        typeof error === "object" &&
+        typeof error === 'object' &&
         error != null &&
-        "message" in error &&
-        typeof error.message === "string"
+        'message' in error &&
+        typeof error.message === 'string'
       ) {
         details = error.message;
       }
@@ -181,15 +240,10 @@ class Connection {
   #handleResponse(response: AnyResponse) {
     const pendingResponse = this.#pendingResponses.get(response.id);
     if (pendingResponse) {
-      if ("result" in response) {
+      if ('result' in response) {
         pendingResponse.resolve(response.result);
-      } else if ("error" in response) {
-        const error = new RequestError(
-          response.error.code,
-          response.error.message,
-          response.error.data,
-        );
-        pendingResponse.reject(error);
+      } else if ('error' in response) {
+        pendingResponse.reject(response.error);
       }
       this.#pendingResponses.delete(response.id);
     }
@@ -200,16 +254,16 @@ class Connection {
     const responsePromise = new Promise((resolve, reject) => {
       this.#pendingResponses.set(id, { resolve, reject });
     });
-    await this.#sendMessage({ jsonrpc: "2.0", id, method, params });
+    await this.#sendMessage({ jsonrpc: '2.0', id, method, params });
     return responsePromise as Promise<Resp>;
   }
 
   async sendNotification<N>(method: string, params?: N): Promise<void> {
-    await this.#sendMessage({ jsonrpc: "2.0", method, params });
+    await this.#sendMessage({ jsonrpc: '2.0', method, params });
   }
 
   async #sendMessage(json: AnyMessage) {
-    const content = JSON.stringify(json) + "\n";
+    const content = JSON.stringify(json) + '\n';
     this.#writeQueue = this.#writeQueue
       .then(async () => {
         const writer = this.#peerInput.getWriter();
@@ -221,10 +275,63 @@ class Connection {
       })
       .catch((error) => {
         // Continue processing writes on error
-        console.error("ACP write error:", error);
+        console.error('ACP write error:', error);
       });
     return this.#writeQueue;
   }
+}
+
+export class RequestError extends Error {
+  data?: { details?: string };
+
+  constructor(
+    public code: number,
+    message: string,
+    details?: string,
+  ) {
+    super(message);
+    this.name = 'RequestError';
+    if (details) {
+      this.data = { details };
+    }
+  }
+
+  static parseError(details?: string): RequestError {
+    return new RequestError(-32700, 'Parse error', details);
+  }
+
+  static invalidRequest(details?: string): RequestError {
+    return new RequestError(-32600, 'Invalid request', details);
+  }
+
+  static methodNotFound(details?: string): RequestError {
+    return new RequestError(-32601, 'Method not found', details);
+  }
+
+  static invalidParams(details?: string): RequestError {
+    return new RequestError(-32602, 'Invalid params', details);
+  }
+
+  static internalError(details?: string): RequestError {
+    return new RequestError(-32603, 'Internal error', details);
+  }
+
+  toResult<T>(): Result<T> {
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        data: this.data,
+      },
+    };
+  }
+}
+
+export interface Client {
+  requestPermission(
+    params: schema.RequestPermissionRequest,
+  ): Promise<schema.RequestPermissionResponse>;
+  sessionUpdate(params: schema.SessionNotification): Promise<void>;
 }
 
 export interface Agent {
@@ -237,188 +344,7 @@ export interface Agent {
   loadSession?(
     params: schema.LoadSessionRequest,
   ): Promise<schema.LoadSessionResponse>;
-  authenticate(
-    params: schema.AuthenticateRequest,
-  ): Promise<void>;
+  authenticate(params: schema.AuthenticateRequest): Promise<void>;
   prompt(params: schema.PromptRequest): Promise<void>;
   cancelled(params: schema.CancelledNotification): Promise<void>;
-}
-
-export interface Client {
-  writeTextFile(
-    params: schema.WriteTextFileRequest,
-  ): Promise<schema.WriteTextFileResponse>;
-  readTextFile(
-    params: schema.ReadTextFileRequest,
-  ): Promise<schema.ReadTextFileResponse>;
-  requestPermission(
-    params: schema.RequestPermissionRequest,
-  ): Promise<schema.RequestPermissionResponse>;
-  sessionUpdate(params: schema.SessionNotification): Promise<void>;
-}
-
-export class AgentSideConnection implements Client {
-  #connection: Connection;
-
-  constructor(
-    toAgent: (conn: AgentSideConnection) => Agent,
-    input: WritableStream<Uint8Array>,
-    output: ReadableStream<Uint8Array>,
-  ) {
-    const agent = toAgent(this);
-
-    // Create method configuration map for agent methods
-    const methods = new Map<string, MethodConfig>([
-      [
-        schema.AGENT_METHODS.initialize,
-        {
-          handler: (params) => agent.initialize(params),
-          schema: schema.initializeRequestSchema,
-        },
-      ],
-      [
-        schema.AGENT_METHODS.session_new,
-        {
-          handler: (params) => agent.newSession(params),
-          schema: schema.newSessionRequestSchema,
-        },
-      ],
-      [
-        schema.AGENT_METHODS.session_load,
-        {
-          handler: (params) => {
-            if (!agent.loadSession) {
-              throw RequestError.methodNotFound()
-            }
-
-            return agent.loadSession(params);
-          },
-          schema: schema.loadSessionRequestSchema,
-        },
-      ],
-      [
-        schema.AGENT_METHODS.authenticate,
-        {
-          handler: (params) => agent.authenticate(params),
-          schema: schema.authenticateRequestSchema,
-        },
-      ],
-      [
-        schema.AGENT_METHODS.session_prompt,
-        {
-          handler: (params) => agent.prompt(params),
-          schema: schema.promptRequestSchema,
-        },
-      ],
-      [
-        schema.AGENT_METHODS.session_cancelled,
-        {
-          handler: (params) => agent.cancelled(params),
-          schema: schema.cancelledNotificationSchema,
-        },
-      ],
-    ]);
-
-    this.#connection = new Connection(methods, input, output);
-  }
-
-  async writeTextFile(
-    params: schema.WriteTextFileRequest,
-  ): Promise<schema.WriteTextFileResponse> {
-    return await this.#connection.sendRequest(
-      schema.CLIENT_METHODS.fs_write_text_file,
-      params,
-    );
-  }
-
-  async readTextFile(
-    params: schema.ReadTextFileRequest,
-  ): Promise<schema.ReadTextFileResponse> {
-    return await this.#connection.sendRequest(
-      schema.CLIENT_METHODS.fs_read_text_file,
-      params,
-    );
-  }
-
-  async requestPermission(
-    params: schema.RequestPermissionRequest,
-  ): Promise<schema.RequestPermissionResponse> {
-    return await this.#connection.sendRequest(
-      schema.CLIENT_METHODS.session_request_permission,
-      params,
-    );
-  }
-
-  async sessionUpdate(params: schema.SessionNotification): Promise<void> {
-    return await this.#connection.sendNotification(
-      schema.CLIENT_METHODS.session_update,
-      params,
-    );
-  }
-}
-
-export class RequestError extends Error {
-  data?: unknown;
-
-  constructor(
-    public code: number,
-    message: string,
-    data?: unknown,
-  ) {
-    super(message);
-    this.name = "RequestError";
-    if (data !== undefined) {
-      this.data = data;
-    }
-  }
-
-  static parseError(details?: string): RequestError {
-    return new RequestError(
-      -32700,
-      "Parse error",
-      details ? { details } : undefined,
-    );
-  }
-
-  static invalidRequest(details?: string): RequestError {
-    return new RequestError(
-      -32600,
-      "Invalid request",
-      details ? { details } : undefined,
-    );
-  }
-
-  static methodNotFound(details?: string): RequestError {
-    return new RequestError(
-      -32601,
-      "Method not found",
-      details ? { details } : undefined,
-    );
-  }
-
-  static invalidParams(details?: string): RequestError {
-    return new RequestError(
-      -32602,
-      "Invalid params",
-      details ? { details } : undefined,
-    );
-  }
-
-  static internalError(details?: string): RequestError {
-    return new RequestError(
-      -32603,
-      "Internal error",
-      details ? { details } : undefined,
-    );
-  }
-
-  toResult<T>(): Result<T> {
-    return {
-      error: {
-        code: this.code,
-        message: this.message,
-        data: this.data,
-      },
-    };
-  }
 }

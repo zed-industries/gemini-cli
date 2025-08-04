@@ -573,7 +573,7 @@ export class Config {
     return this.extensionContextFilePaths;
   }
 
-  getexperimentalAcp(): boolean {
+  getExperimentalAcp(): boolean {
     return this.experimentalAcp;
   }
 

@@ -176,8 +176,7 @@ export async function parseArguments(): Promise<CliArgs> {
     })
     .option('experimental-acp', {
       type: 'boolean',
-      description:
-        '(Experimental) Starts an MCP server over Standard I/O that can be used to access the agent',
+      description: 'Starts the agent in ACP mode',
     })
     .option('allowed-mcp-server-names', {
       type: 'array',
