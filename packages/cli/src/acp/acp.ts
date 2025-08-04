@@ -20,7 +20,6 @@ export class AgentSideConnection implements Client {
   ) {
     const agent = toAgent(this);
 
-    // Handler function for agent methods
     const handler = async (
       method: string,
       params: unknown,
