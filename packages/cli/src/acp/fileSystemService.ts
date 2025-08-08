@@ -4,10 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
-  FileSystemService,
-  FileSystemServiceOptions,
-} from '@google/gemini-cli-core';
+import { FileSystemService } from '@google/gemini-cli-core';
 import * as acp from './acp.js';
 
 /**
@@ -21,19 +18,16 @@ export class AcpFileSystemService implements FileSystemService {
     private readonly fallback: FileSystemService,
   ) {}
 
-  async readTextFile(
-    filePath: string,
-    options?: FileSystemServiceOptions,
-  ): Promise<string> {
+  async readTextFile(filePath: string): Promise<string> {
     if (!this.capabilities.readTextFile) {
-      return this.fallback.readTextFile(filePath, options);
+      return this.fallback.readTextFile(filePath);
     }
 
     const response = await this.client.readTextFile({
       path: filePath,
       sessionId: this.sessionId,
-      line: options?.line ?? null,
-      limit: options?.limit ?? null,
+      line: null,
+      limit: null,
     });
 
     return response.content;
