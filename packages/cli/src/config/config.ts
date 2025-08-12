@@ -512,7 +512,7 @@ export async function loadCliConfig(
     model: argv.model || settings.model || DEFAULT_GEMINI_MODEL,
     extensionContextFilePaths,
     maxSessionTurns: settings.maxSessionTurns ?? -1,
-    experimentalAcp: argv.experimentalAcp || false,
+    experimentalZedIntegration: argv.experimentalAcp || false,
     listExtensions: argv.listExtensions || false,
     extensions: allExtensions,
     blockedMcpServers,

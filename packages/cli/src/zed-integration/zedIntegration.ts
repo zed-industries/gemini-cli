@@ -35,7 +35,7 @@ import { randomUUID } from 'crypto';
 import { Extension } from '../config/extension.js';
 import { CliArgs, loadCliConfig } from '../config/config.js';
 
-export async function runAcpPeer(
+export async function runZedIntegration(
   config: Config,
   settings: LoadedSettings,
   extensions: Extension[],
