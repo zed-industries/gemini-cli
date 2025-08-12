@@ -33,6 +33,7 @@ import {
   CorrectedEditResult,
 } from '../utils/editCorrector.js';
 import { createMockWorkspaceContext } from '../test-utils/mockWorkspaceContext.js';
+import { StandardFileSystemService } from '../services/fileSystemService.js';
 
 const rootDir = path.resolve(os.tmpdir(), 'gemini-cli-test-root');
 
@@ -51,11 +52,13 @@ vi.mocked(ensureCorrectFileContent).mockImplementation(
 );
 
 // Mock Config
+const mockFileSystemService = new StandardFileSystemService();
 const mockConfigInternal = {
   getTargetDir: () => rootDir,
   getApprovalMode: vi.fn(() => ApprovalMode.DEFAULT),
   setApprovalMode: vi.fn(),
   getGeminiClient: vi.fn(), // Initialize as a plain mock function
+  getFileSystemService: () => mockFileSystemService,
   getIdeClient: vi.fn(),
   getIdeMode: vi.fn(() => false),
   getWorkspaceContext: () => createMockWorkspaceContext(rootDir),
@@ -319,10 +322,9 @@ describe('WriteFileTool', () => {
       fs.writeFileSync(filePath, 'content', { mode: 0o000 });
 
       const readError = new Error('Permission denied');
-      const originalReadFileSync = fs.readFileSync;
-      vi.spyOn(fs, 'readFileSync').mockImplementationOnce(() => {
-        throw readError;
-      });
+      vi.spyOn(mockFileSystemService, 'readTextFile').mockImplementationOnce(
+        () => Promise.reject(readError),
+      );
 
       // @ts-expect-error _getCorrectedFileContent is private
       const result = await tool._getCorrectedFileContent(
@@ -331,7 +333,7 @@ describe('WriteFileTool', () => {
         abortSignal,
       );
 
-      expect(fs.readFileSync).toHaveBeenCalledWith(filePath, 'utf8');
+      expect(mockFileSystemService.readTextFile).toHaveBeenCalledWith(filePath);
       expect(mockEnsureCorrectEdit).not.toHaveBeenCalled();
       expect(mockEnsureCorrectFileContent).not.toHaveBeenCalled();
       expect(result.correctedContent).toBe(proposedContent);
@@ -342,7 +344,6 @@ describe('WriteFileTool', () => {
         code: undefined,
       });
 
-      vi.spyOn(fs, 'readFileSync').mockImplementation(originalReadFileSync);
       fs.chmodSync(filePath, 0o600);
     });
   });
@@ -368,15 +369,13 @@ describe('WriteFileTool', () => {
       fs.writeFileSync(filePath, 'original', { mode: 0o000 });
 
       const readError = new Error('Simulated read error for confirmation');
-      const originalReadFileSync = fs.readFileSync;
-      vi.spyOn(fs, 'readFileSync').mockImplementationOnce(() => {
-        throw readError;
-      });
+      vi.spyOn(mockFileSystemService, 'readTextFile').mockImplementationOnce(
+        () => Promise.reject(readError),
+      );
 
       const confirmation = await tool.shouldConfirmExecute(params, abortSignal);
       expect(confirmation).toBe(false);
 
-      vi.spyOn(fs, 'readFileSync').mockImplementation(originalReadFileSync);
       fs.chmodSync(filePath, 0o600);
     });
 
@@ -493,13 +492,12 @@ describe('WriteFileTool', () => {
       fs.writeFileSync(filePath, 'original', { mode: 0o000 });
 
       const readError = new Error('Simulated read error for execute');
-      const originalReadFileSync = fs.readFileSync;
-      vi.spyOn(fs, 'readFileSync').mockImplementationOnce(() => {
-        throw readError;
-      });
+      vi.spyOn(mockFileSystemService, 'readTextFile').mockImplementationOnce(
+        () => Promise.reject(readError),
+      );
 
       const result = await tool.execute(params, abortSignal);
-      expect(result.llmContent).toContain('Error checking existing file:');
+      expect(result.llmContent).toContain('Error checking existing file');
       expect(result.returnDisplay).toMatch(
         /Error checking existing file: Simulated read error for execute/,
       );
@@ -509,7 +507,6 @@ describe('WriteFileTool', () => {
         type: ToolErrorType.FILE_WRITE_FAILURE,
       });
 
-      vi.spyOn(fs, 'readFileSync').mockImplementation(originalReadFileSync);
       fs.chmodSync(filePath, 0o600);
     });
 
@@ -544,7 +541,8 @@ describe('WriteFileTool', () => {
         /Successfully created and wrote to new file/,
       );
       expect(fs.existsSync(filePath)).toBe(true);
-      expect(fs.readFileSync(filePath, 'utf8')).toBe(correctedContent);
+      const writtenContent = await mockFileSystemService.readTextFile(filePath);
+      expect(writtenContent).toBe(correctedContent);
       const display = result.returnDisplay as FileDiff;
       expect(display.fileName).toBe('execute_new_corrected_file.txt');
       expect(display.fileDiff).toMatch(
@@ -605,7 +603,8 @@ describe('WriteFileTool', () => {
         abortSignal,
       );
       expect(result.llmContent).toMatch(/Successfully overwrote file/);
-      expect(fs.readFileSync(filePath, 'utf8')).toBe(correctedProposedContent);
+      const writtenContent = await mockFileSystemService.readTextFile(filePath);
+      expect(writtenContent).toBe(correctedProposedContent);
       const display = result.returnDisplay as FileDiff;
       expect(display.fileName).toBe('execute_existing_corrected_file.txt');
       expect(display.fileDiff).toMatch(
@@ -731,13 +730,14 @@ describe('WriteFileTool', () => {
       const filePath = path.join(rootDir, 'permission_denied_file.txt');
       const content = 'test content';
 
-      // Mock writeFileSync to throw EACCES error
-      const originalWriteFileSync = fs.writeFileSync;
-      vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
-        const error = new Error('Permission denied') as NodeJS.ErrnoException;
-        error.code = 'EACCES';
-        throw error;
-      });
+      // Mock FileSystemService writeTextFile to throw EACCES error
+      vi.spyOn(mockFileSystemService, 'writeTextFile').mockImplementationOnce(
+        () => {
+          const error = new Error('Permission denied') as NodeJS.ErrnoException;
+          error.code = 'EACCES';
+          return Promise.reject(error);
+        },
+      );
 
       const params = { file_path: filePath, content };
       const result = await tool.execute(params, abortSignal);
@@ -747,23 +747,22 @@ describe('WriteFileTool', () => {
         `Permission denied writing to file: ${filePath} (EACCES)`,
       );
       expect(result.returnDisplay).toContain('Permission denied');
-
-      vi.spyOn(fs, 'writeFileSync').mockImplementation(originalWriteFileSync);
     });
 
     it('should return NO_SPACE_LEFT error when write fails with ENOSPC', async () => {
       const filePath = path.join(rootDir, 'no_space_file.txt');
       const content = 'test content';
 
-      // Mock writeFileSync to throw ENOSPC error
-      const originalWriteFileSync = fs.writeFileSync;
-      vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
-        const error = new Error(
-          'No space left on device',
-        ) as NodeJS.ErrnoException;
-        error.code = 'ENOSPC';
-        throw error;
-      });
+      // Mock FileSystemService writeTextFile to throw ENOSPC error
+      vi.spyOn(mockFileSystemService, 'writeTextFile').mockImplementationOnce(
+        () => {
+          const error = new Error(
+            'No space left on device',
+          ) as NodeJS.ErrnoException;
+          error.code = 'ENOSPC';
+          return Promise.reject(error);
+        },
+      );
 
       const params = { file_path: filePath, content };
       const result = await tool.execute(params, abortSignal);
@@ -773,8 +772,6 @@ describe('WriteFileTool', () => {
         `No space left on device: ${filePath} (ENOSPC)`,
       );
       expect(result.returnDisplay).toContain('No space left');
-
-      vi.spyOn(fs, 'writeFileSync').mockImplementation(originalWriteFileSync);
     });
 
     it('should return TARGET_IS_DIRECTORY error when write fails with EISDIR', async () => {
@@ -790,13 +787,14 @@ describe('WriteFileTool', () => {
         return originalExistsSync(path as string);
       });
 
-      // Mock writeFileSync to throw EISDIR error
-      const originalWriteFileSync = fs.writeFileSync;
-      vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
-        const error = new Error('Is a directory') as NodeJS.ErrnoException;
-        error.code = 'EISDIR';
-        throw error;
-      });
+      // Mock FileSystemService writeTextFile to throw EISDIR error
+      vi.spyOn(mockFileSystemService, 'writeTextFile').mockImplementationOnce(
+        () => {
+          const error = new Error('Is a directory') as NodeJS.ErrnoException;
+          error.code = 'EISDIR';
+          return Promise.reject(error);
+        },
+      );
 
       const params = { file_path: dirPath, content };
       const result = await tool.execute(params, abortSignal);
@@ -808,7 +806,6 @@ describe('WriteFileTool', () => {
       expect(result.returnDisplay).toContain('Target is a directory');
 
       vi.spyOn(fs, 'existsSync').mockImplementation(originalExistsSync);
-      vi.spyOn(fs, 'writeFileSync').mockImplementation(originalWriteFileSync);
     });
 
     it('should return FILE_WRITE_FAILURE for generic write errors', async () => {
@@ -818,10 +815,10 @@ describe('WriteFileTool', () => {
       // Ensure fs.existsSync is not mocked for this test
       vi.restoreAllMocks();
 
-      // Mock writeFileSync to throw generic error
-      vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
-        throw new Error('Generic write error');
-      });
+      // Mock FileSystemService writeTextFile to throw generic error
+      vi.spyOn(mockFileSystemService, 'writeTextFile').mockImplementationOnce(
+        () => Promise.reject(new Error('Generic write error')),
+      );
 
       const params = { file_path: filePath, content };
       const result = await tool.execute(params, abortSignal);

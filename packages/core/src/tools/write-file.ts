@@ -285,7 +285,9 @@ export class WriteFileTool
         fs.mkdirSync(dirName, { recursive: true });
       }
 
-      fs.writeFileSync(params.file_path, fileContent, 'utf8');
+      await this.config
+        .getFileSystemService()
+        .writeTextFile(params.file_path, fileContent);
 
       // Generate diff for display result
       const fileName = path.basename(params.file_path);
@@ -412,7 +414,9 @@ export class WriteFileTool
     let correctedContent = proposedContent;
 
     try {
-      originalContent = fs.readFileSync(filePath, 'utf8');
+      originalContent = await this.config
+        .getFileSystemService()
+        .readTextFile(filePath);
       fileExists = true; // File exists and was read
     } catch (err) {
       if (isNodeError(err) && err.code === 'ENOENT') {

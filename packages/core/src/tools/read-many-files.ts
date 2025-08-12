@@ -473,6 +473,7 @@ Use this tool when the user's query implies needing the content of several files
           const fileReadResult = await processSingleFileContent(
             filePath,
             this.config.getTargetDir(),
+            this.config.getFileSystemService(),
           );
 
           if (fileReadResult.error) {
