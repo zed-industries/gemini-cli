@@ -194,7 +194,7 @@ class Connection {
                 error: RequestError.parseError({ message: err.message }),
               });
             } else {
-              throw err;
+              console.error('Unexpected error during message processing:', err);
             }
           }
         }
