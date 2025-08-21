@@ -101,7 +101,7 @@ class GeminiAgent {
         loadSession: false,
         promptCapabilities: {
           image: true,
-          audio: false,
+          audio: true,
           embeddedContext: true,
         },
       },
@@ -502,6 +502,7 @@ class Session {
         case 'text':
           return { text: part.text };
         case 'image':
+        case 'audio':
           return {
             inlineData: {
               mimeType: part.mimeType,
@@ -526,7 +527,8 @@ class Session {
           return { text: `@${part.resource.uri}` };
         }
         default: {
-          throw new Error(`Unexpected chunk type: '${part.type}'`);
+          const unreachable: never = part;
+          throw new Error(`Unexpected chunk type: '${unreachable}'`);
         }
       }
     });
