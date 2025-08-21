@@ -710,12 +710,13 @@ class Session {
 
     const processedQueryParts: Part[] = [{ text: initialQueryText }];
 
-    if (atPathCommandParts.length > 0) {
-      if (pathSpecsToRead.length === 0 && embeddedContext.length === 0) {
-        // Fallback for lone "@" or completely invalid @-commands resulting in empty initialQueryText
-        console.warn('No valid file paths found in @ commands to read.');
-        return [{ text: initialQueryText }];
-      }
+    if (pathSpecsToRead.length === 0 && embeddedContext.length === 0) {
+      // Fallback for lone "@" or completely invalid @-commands resulting in empty initialQueryText
+      console.warn('No valid file paths found in @ commands to read.');
+      return [{ text: initialQueryText }];
+    }
+
+    if (pathSpecsToRead.length > 0) {
       const toolArgs = {
         paths: pathSpecsToRead,
         respectGitIgnore, // Use configuration setting
