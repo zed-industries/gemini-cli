@@ -100,7 +100,7 @@ class GeminiAgent {
       agentCapabilities: {
         loadSession: false,
         promptCapabilities: {
-          image: false,
+          image: true,
           audio: false,
           embeddedContext: true,
         },
@@ -501,6 +501,13 @@ class Session {
       switch (part.type) {
         case 'text':
           return { text: part.text };
+        case 'image':
+          return {
+            inlineData: {
+              mimeType: part.mimeType,
+              data: part.data,
+            },
+          };
         case 'resource_link': {
           if (part.uri.startsWith(FILE_URI_SCHEME)) {
             return {
