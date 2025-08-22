@@ -834,6 +834,10 @@ class Session {
 }
 
 function toToolCallContent(toolResult: ToolResult): acp.ToolCallContent | null {
+  if (toolResult.error?.message) {
+    throw new Error(toolResult.error.message);
+  }
+
   if (toolResult.returnDisplay) {
     if (typeof toolResult.returnDisplay === 'string') {
       return {
