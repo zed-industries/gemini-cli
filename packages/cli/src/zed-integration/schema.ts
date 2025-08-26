@@ -13,6 +13,7 @@ export const AGENT_METHODS = {
   session_load: 'session/load',
   session_new: 'session/new',
   session_prompt: 'session/prompt',
+  session_rewind: 'session/rewind',
 };
 
 export const CLIENT_METHODS = {
@@ -57,6 +58,9 @@ export type AuthenticateResponse = z.infer<typeof authenticateResponseSchema>;
 export type NewSessionResponse = z.infer<typeof newSessionResponseSchema>;
 
 export type LoadSessionResponse = z.infer<typeof loadSessionResponseSchema>;
+
+export type RewindRequest = z.infer<typeof rewindRequestSchema>;
+export type RewindResponse = z.infer<typeof rewindSessionResponseSchema>;
 
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
@@ -213,6 +217,8 @@ export const newSessionResponseSchema = z.object({
 
 export const loadSessionResponseSchema = z.null();
 
+export const rewindSessionResponseSchema = z.null();
+
 export const stopReasonSchema = z.union([
   z.literal('end_turn'),
   z.literal('max_tokens'),
@@ -280,6 +286,7 @@ export const promptCapabilitiesSchema = z.object({
 
 export const agentCapabilitiesSchema = z.object({
   loadSession: z.boolean().optional(),
+  rewindSession: z.boolean().optional(),
   promptCapabilities: promptCapabilitiesSchema.optional(),
 });
 
@@ -310,6 +317,11 @@ export const newSessionRequestSchema = z.object({
 export const loadSessionRequestSchema = z.object({
   cwd: z.string(),
   mcpServers: z.array(mcpServerSchema),
+  sessionId: z.string(),
+});
+
+export const rewindRequestSchema = z.object({
+  promptId: z.string(),
   sessionId: z.string(),
 });
 
@@ -383,6 +395,7 @@ export const clientCapabilitiesSchema = z.object({
 
 export const promptRequestSchema = z.object({
   prompt: z.array(contentBlockSchema),
+  promptId: z.string().optional(),
   sessionId: z.string(),
 });
 
@@ -430,6 +443,7 @@ export const agentResponseSchema = z.union([
   authenticateResponseSchema,
   newSessionResponseSchema,
   loadSessionResponseSchema,
+  rewindSessionResponseSchema,
   promptResponseSchema,
 ]);
 

@@ -43,6 +43,13 @@ export class AgentSideConnection implements Client {
           const validatedParams = schema.loadSessionRequestSchema.parse(params);
           return agent.loadSession(validatedParams);
         }
+        case schema.AGENT_METHODS.session_rewind: {
+          if (!agent.rewindSession) {
+            throw RequestError.methodNotFound();
+          }
+          const validatedParams = schema.rewindRequestSchema.parse(params);
+          return agent.rewindSession(validatedParams);
+        }
         case schema.AGENT_METHODS.authenticate: {
           const validatedParams =
             schema.authenticateRequestSchema.parse(params);
@@ -361,6 +368,7 @@ export interface Agent {
   loadSession?(
     params: schema.LoadSessionRequest,
   ): Promise<schema.LoadSessionResponse>;
+  rewindSession?(params: schema.RewindRequest): Promise<schema.RewindResponse>;
   authenticate(params: schema.AuthenticateRequest): Promise<void>;
   prompt(params: schema.PromptRequest): Promise<schema.PromptResponse>;
   cancel(params: schema.CancelNotification): Promise<void>;

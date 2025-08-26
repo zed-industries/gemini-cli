@@ -99,6 +99,7 @@ class GeminiAgent {
       authMethods,
       agentCapabilities: {
         loadSession: false,
+        rewindSession: true,
         promptCapabilities: {
           image: true,
           audio: true,
@@ -201,10 +202,19 @@ class GeminiAgent {
     }
     return session.prompt(params);
   }
+
+  async rewindSession(params: acp.RewindRequest): Promise<acp.RewindResponse> {
+    const session = this.sessions.get(params.sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${params.sessionId}`);
+    }
+    return session.rewind(params);
+  }
 }
 
 class Session {
   private pendingPrompt: AbortController | null = null;
+  private checkpoints: { [key: string]: Content[] } = {};
 
   constructor(
     private readonly id: string,
@@ -227,8 +237,9 @@ class Session {
     const pendingSend = new AbortController();
     this.pendingPrompt = pendingSend;
 
-    const promptId = Math.random().toString(16).slice(2);
+    const promptId = params.promptId ?? Math.random().toString(16).slice(2);
     const chat = this.chat;
+    this.checkpoints[promptId] = chat.getHistory(true);
 
     const parts = await this.#resolvePrompt(params.prompt, pendingSend.signal);
 
@@ -308,6 +319,20 @@ class Session {
     }
 
     return { stopReason: 'end_turn' };
+  }
+
+  async rewind(params: acp.RewindRequest): Promise<acp.RewindResponse> {
+    if (this.pendingPrompt) {
+      this.pendingPrompt.abort();
+      this.pendingPrompt = null;
+    }
+    const checkpoint = this.checkpoints[params.promptId];
+    if (!checkpoint) {
+      throw new Error('Invalid prompt ID');
+    }
+    this.chat.setHistory(checkpoint);
+
+    return null;
   }
 
   private async sendUpdate(update: acp.SessionUpdate): Promise<void> {
