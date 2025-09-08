@@ -197,30 +197,27 @@ class GeminiAgent {
           headers[header.name] = header.value;
         }
 
+        let sseUrl: string | undefined;
+        let httpUrl: string | undefined;
+
         if (mcpServer.type === 'sse') {
-          mergedMcpServers[mcpServer.name] = new MCPServerConfig(
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            mcpServer.url,
-            undefined,
-            headers,
-          );
+          sseUrl = mcpServer.url;
         } else if (mcpServer.type === 'http') {
-          mergedMcpServers[mcpServer.name] = new MCPServerConfig(
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            mcpServer.url,
-            headers,
-          );
+          httpUrl = mcpServer.url;
         } else {
           const unreachable: never = mcpServer;
           throw new Error(`Unexpected MCP server type: ${unreachable}`);
         }
+
+        mergedMcpServers[mcpServer.name] = new MCPServerConfig(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          sseUrl,
+          httpUrl,
+          headers,
+        );
       }
     }
 
