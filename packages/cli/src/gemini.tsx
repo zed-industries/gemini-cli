@@ -539,6 +539,7 @@ export async function main() {
     }
 
     if (config.getExperimentalZedIntegration()) {
+      initializeOutputListenersAndFlush();
       return runZedIntegration(config, settings, argv);
     }
 
